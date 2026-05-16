@@ -5,20 +5,18 @@ import base64
 # Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="centered")
 
-
 # 1. BIZTONSÁG: Jelszó ellenőrzése
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
-
+        
     if st.session_state["authenticated"]:
         return True
 
     st.title("🔒 Privát Tárhely Belépés")
     password_input = st.text_input("Kérlek, add meg a jelszót:", type="password")
-
+    
     if st.button("Belépés"):
-        # A jelszót a Streamlit Secrets-ből olvassuk be biztonságosan
         if password_input == st.secrets["ACCESS_PASSWORD"]:
             st.session_state["authenticated"] = True
             st.rerun()
@@ -26,16 +24,19 @@ def check_password():
             st.error("❌ Helytelen jelszó! Hozzáférés megtagadva.")
     return False
 
-
 # Ha a jelszó helyes, betöltődik az app többi része
 if check_password():
-    st.title("📁 Saját Felhő Tárhely")
-    st.info("Privát GitHub tárhely.")
-    st.info("A Streamlit limitje 500mb-ra van állítva, de a GitHub 100mb-nál többet nem enged feltölteni.")
+    st.title("📁 Saját Felhő Tárhelyem")
+    st.info("Ez a felület közvetlenül a privát GitHub tárhelyedhez kapcsolódik.")
 
     # Környezeti változók beolvasása a biztonságos tárolóból
     TOKEN = st.secrets["GITHUB_TOKEN"]
     REPO = st.secrets["GITHUB_REPO"]  # Formátum: "felhasznalonev/repo-neve"
+    
+    headers = {
+        "Authorization": f"token {TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
 
     # --- FÁJL FELTÖLTÉS SECTION ---
     st.subheader("📤 Új fájl feltöltése")
@@ -44,25 +45,19 @@ if check_password():
     if uploaded_file is not None:
         file_name = uploaded_file.name
         file_bytes = uploaded_file.read()
-
-        # A GitHub API Base64 formátumban várja a fájlok tartalmát
+        
         encoded_content = base64.b64encode(file_bytes).decode("utf-8")
-
+        
         if st.button("🚀 Biztonságos feltöltés indítása"):
             with st.spinner("Fájl küldése a GitHubra..."):
                 url = f"https://api.github.com/repos/{REPO}/contents/{file_name}"
-                headers = {
-                    "Authorization": f"token {TOKEN}",
-                    "Accept": "application/vnd.github.v3+json"
-                }
                 data = {
                     "message": f"Feltöltve Streamlit-ről: {file_name}",
                     "content": encoded_content
                 }
-
-                # Küldés a GitHub API-nak
+                
                 response = requests.put(url, json=data, headers=headers)
-
+                
                 if response.status_code in [200, 201]:
                     st.success(f"✅ A(z) '{file_name}' sikeresen elmentve!")
                     st.rerun()
