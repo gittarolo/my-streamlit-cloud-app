@@ -71,38 +71,57 @@ if check_password():
 
     st.write("---")
 
-    # --- FÁJL LISTÁZÁS ÉS LETÖLTÉS SECTION ---
+    # --- FÁJL LISTÁZÁS, LETÖLTÉS ÉS TÖRLES SECTION ---
     st.subheader("📚 Tárolt fájljaid elérése")
-
+    
     list_url = f"https://api.github.com/repos/{REPO}/contents/"
-    list_headers = {"Authorization": f"token {TOKEN}"}
-
+    
     with st.spinner("Fájllista frissítése..."):
-        res = requests.get(list_url, headers=list_headers)
-
+        res = requests.get(list_url, headers=headers)
+        
     if res.status_code == 200:
         files = res.json()
         valid_files = [f for f in files if f["type"] == "file"]
-
+        
         if not valid_files:
             st.write("A tárhelyed jelenleg üres.")
         else:
             for f in valid_files:
-                # Sorok létrehozása a fájloknak és gomboknak
-                col_name, col_btn = st.columns([3, 1])
+                # Három oszlopra osztjuk a sort: Fájlnév, Letöltés gomb, Törlés gomb
+                # Telefonos nézethez optimalizált arányok (col_delete kicsit kisebb)
+                col_name, col_dl, col_del = st.columns([2, 1, 1])
+                
                 col_name.write(f"📄 {f['name']}")
-
-                # Letöltés gomb kezelése
-                if col_btn.button("Letöltés", key=f["sha"]):
-                    # Privát repónál a nyers fájlt is csak tokennel tudjuk lekérni
-                    file_res = requests.get(f["url"], headers=list_headers)
+                
+                # 1. Letöltés gomb kezelése
+                if col_dl.button("📥 Letölt", key=f"dl_btn_{f['sha']}"):
+                    file_res = requests.get(f["url"], headers=headers)
                     if file_res.status_code == 200:
                         raw_data = base64.b64decode(file_res.json()["content"])
                         st.download_button(
-                            label="📥 Mentés a készülékre",
+                            label="💾 Mentés",
                             data=raw_data,
                             file_name=f["name"],
-                            key=f"dl_{f['sha']}"
+                            key=f"save_{f['sha']}"
                         )
+                
+                # 2. Törlés gomb kezelése
+                if col_del.button("🗑️ Töröl", key=f"del_btn_{f['sha']}", type="secondary"):
+                    with st.spinner("Törlés folyamatban..."):
+                        delete_url = f"https://api.github.com/repos/{REPO}/contents/{f['name']}"
+                        # A GitHub megköveteli az SHA azonosítót a törlés megerősítéséhez
+                        delete_data = {
+                            "message": f"Törölve Streamlit-ről: {f['name']}",
+                            "sha": f["sha"]
+                        }
+                        
+                        # A törléshez HTTP DELETE kérést kell küldeni
+                        del_res = requests.delete(delete_url, json=delete_data, headers=headers)
+                        
+                        if del_res.status_code == 200:
+                            st.success(f"🗑️ '{f['name']}' sikeresen törölve!")
+                            st.rerun()  # Azonnali oldalfrissítés, hogy eltűnjön a listából
+                        else:
+                            st.error("❌ Nem sikerült törölni a fájlt.")
     else:
         st.error("Nem sikerült elérni a GitHub tárhelyet. Ellenőrizd a beállításokat!")
