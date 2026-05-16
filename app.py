@@ -31,7 +31,7 @@ if check_password():
 
     # Környezeti változók beolvasása a biztonságos tárolóból
     TOKEN = st.secrets["GITHUB_TOKEN"]
-    REPO = st.secrets["GITHUB_REPO"]  # Formátum: "felhasznalonev/repo-neve"
+    REPO = st.secrets["GITHUB_REPO"]
     
     headers = {
         "Authorization": f"token {TOKEN}",
@@ -45,7 +45,6 @@ if check_password():
     if uploaded_file is not None:
         file_name = uploaded_file.name
         file_bytes = uploaded_file.read()
-        
         encoded_content = base64.b64encode(file_bytes).decode("utf-8")
         
         if st.button("🚀 Biztonságos feltöltés indítása"):
@@ -55,14 +54,12 @@ if check_password():
                     "message": f"Feltöltve Streamlit-ről: {file_name}",
                     "content": encoded_content
                 }
-                
                 response = requests.put(url, json=data, headers=headers)
-                
                 if response.status_code in [200, 201]:
                     st.success(f"✅ A(z) '{file_name}' sikeresen elmentve!")
                     st.rerun()
                 else:
-                    st.error(f"❌ Hiba történt: {response.json().get('message', 'Ismeretlen hiba')}")
+                    st.error("❌ Hiba történt a feltöltés során.")
 
     st.write("---")
 
@@ -81,14 +78,15 @@ if check_password():
         if not valid_files:
             st.write("A tárhelyed jelenleg üres.")
         else:
+            # Inicializáljuk a törlési fázist a memóriában, ha még nem létezik
+            if "delete_confirm_sha" not in st.session_state:
+                st.session_state["delete_confirm_sha"] = None
+
             for f in valid_files:
-                # Három oszlopra osztjuk a sort: Fájlnév, Letöltés gomb, Törlés gomb
-                # Telefonos nézethez optimalizált arányok (col_delete kicsit kisebb)
                 col_name, col_dl, col_del = st.columns([2, 1, 1])
-                
                 col_name.write(f"📄 {f['name']}")
                 
-                # 1. Letöltés gomb kezelése
+                # 1. Letöltés gomb
                 if col_dl.button("📥 Letölt", key=f"dl_btn_{f['sha']}"):
                     file_res = requests.get(f["url"], headers=headers)
                     if file_res.status_code == 200:
@@ -100,23 +98,40 @@ if check_password():
                             key=f"save_{f['sha']}"
                         )
                 
-                # 2. Törlés gomb kezelése
-                if col_del.button("🗑️ Töröl", key=f"del_btn_{f['sha']}", type="secondary"):
-                    with st.spinner("Törlés folyamatban..."):
-                        delete_url = f"https://api.github.com/repos/{REPO}/contents/{f['name']}"
-                        # A GitHub megköveteli az SHA azonosítót a törlés megerősítéséhez
-                        delete_data = {
-                            "message": f"Törölve Streamlit-ről: {f['name']}",
-                            "sha": f["sha"]
-                        }
-                        
-                        # A törléshez HTTP DELETE kérést kell küldeni
-                        del_res = requests.delete(delete_url, json=delete_data, headers=headers)
-                        
-                        if del_res.status_code == 200:
-                            st.success(f"🗑️ '{f['name']}' sikeresen törölve!")
-                            st.rerun()  # Azonnali oldalfrissítés, hogy eltűnjön a listából
-                        else:
-                            st.error("❌ Nem sikerült törölni a fájlt.")
+                # 2. Törlés gomb (Első megnyomás)
+                if col_del.button("🗑️ Töröl", key=f"del_btn_{f['sha']}"):
+                    # Elmentjük a memóriába, hogy épp MELYIK fájlt akarja törölni a felhasználó
+                    st.session_state["delete_confirm_sha"] = f["sha"]
+                    st.rerun()
+
+                # --- MEGERŐSÍTŐ PANEL ---
+                # Ha a felhasználó rákattintott a törlésre, és ez az a fájl, akkor mutatjuk a kérdést
+                if st.session_state["delete_confirm_sha"] == f["sha"]:
+                    st.warning(f"⚠️ Biztosan törölni szeretnéd a(z) '{f['name']}' fájlt?")
+                    col_yes, col_no = st.columns([1, 1])
+                    
+                    # IGEN gomb - Végrehajtja a törlést
+                    if col_yes.button("🔥 Igen, töröld!", key=f"yes_{f['sha']}", type="primary"):
+                        with st.spinner("Törlés folyamatban..."):
+                            delete_url = f"https://api.github.com/repos/{REPO}/contents/{f['name']}"
+                            delete_data = {
+                                "message": f"Törölve: {f['name']}",
+                                "sha": f["sha"]
+                            }
+                            del_res = requests.delete(delete_url, json=delete_data, headers=headers)
+                            
+                            if del_res.status_code == 200:
+                                st.session_state["delete_confirm_sha"] = None # Törlési állapot visszaállítása
+                                st.success("Sikeres törlés!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Hiba történt a törlés során.")
+                    
+                    # NEM gomb - Elveti a műveletet
+                    if col_no.button("❌ Mégse", key=f"no_{f['sha']}"):
+                        st.session_state["delete_confirm_sha"] = None # Törlési állapot törlése
+                        st.rerun()
+                    
+                    st.write("---") # Kis elválasztó vonal a megerősítő panel alá
     else:
-        st.error("Nem sikerült elérni a GitHub tárhelyet. Ellenőrizd a beállításokat!")
+        st.error("Nem sikerült elérni a GitHub tárhelyet.")
