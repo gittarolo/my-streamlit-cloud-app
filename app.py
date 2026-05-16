@@ -23,6 +23,7 @@ def check_password():
 
 if check_password():
     st.title("📁 Saját Felhő Tárhelyem")
+    st.info("Max 50MB")
 
     TOKEN = st.secrets["GITHUB_TOKEN"]
     REPO = st.secrets["GITHUB_REPO"]
