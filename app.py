@@ -30,7 +30,8 @@ def check_password():
 # Ha a jelszó helyes, betöltődik az app többi része
 if check_password():
     st.title("📁 Saját Felhő Tárhely")
-    st.info("Privát GitHub tárhely. A Streamlit limitje, 500mb-ra van állítva, de a GitHub 100mb-nál többet nem enged feltölteni.")
+    st.info("Privát GitHub tárhely.")
+    st.info("A Streamlit limitje, 500mb-ra van állítva, de a GitHub 100mb-nál többet nem enged feltölteni.")
 
     # Környezeti változók beolvasása a biztonságos tárolóból
     TOKEN = st.secrets["GITHUB_TOKEN"]
