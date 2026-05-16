@@ -1,12 +1,11 @@
 import streamlit as st
 import requests
 import base64
-import mimetypes
 
 # Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="centered")
 
-# jelszó ellenőrző függvény (maradt a régi)
+# Jelszó ellenőrző függvény (maradt a régi)
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -27,7 +26,18 @@ if check_password():
 
     TOKEN = st.secrets["GITHUB_TOKEN"]
     REPO = st.secrets["GITHUB_REPO"]
-    headers = {"Authorization": f"token {TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    
+    # Alapértelmezett API fejléc
+    headers = {
+        "Authorization": f"token {TOKEN}", 
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # Speciális fejléc a NYERS (raw) fájltartalom közvetlen letöltéséhez méretkorlát nélkül
+    raw_headers = {
+        "Authorization": f"token {TOKEN}",
+        "Accept": "application/vnd.github.v3.raw"
+    }
 
     # --- FELTÖLTÉS SECTION ---
     st.subheader("📤 Új fájl feltöltése")
@@ -50,7 +60,6 @@ if check_password():
     # --- LISTÁZÁS ÉS ELŐNÉZET SECTION ---
     st.subheader("📚 Tárolt fájljaid")
     
-    # Inicializáljuk a memóriát az előnézethez és törléshez
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
@@ -64,7 +73,6 @@ if check_password():
             st.write("A tárhely üres.")
         else:
             for f in valid_files:
-                # 4 oszlop: Név, Előnézet, Letöltés, Törlés (telefonbarát elrendezés)
                 col_name, col_prev, col_dl, col_del = st.columns([2, 1, 1, 1])
                 col_name.write(f"📄 {f['name']}")
                 
@@ -75,9 +83,10 @@ if check_password():
                 
                 # 2. LETÖLTÉS GOMB
                 if col_dl.button("📥", key=f"dl_btn_{f['sha']}", help="Letöltés"):
-                    file_res = requests.get(f["url"], headers=headers)
+                    # A raw_headers segítségével közvetlenül a tiszta bináris adatot kérjük le
+                    file_res = requests.get(f["url"], headers=raw_headers)
                     if file_res.status_code == 200:
-                        st.download_button(label="💾 Mentés", data=base64.b64decode(file_res.json()["content"]), file_name=f["name"], key=f"save_{f['sha']}")
+                        st.download_button(label="💾 Mentés", data=file_res.content, file_name=f["name"], key=f"save_{f['sha']}")
                 
                 # 3. TÖRLES GOMB
                 if col_del.button("🗑️", key=f"del_btn_{f['sha']}", help="Törlés"):
@@ -88,9 +97,10 @@ if check_password():
                 if st.session_state["preview_sha"] == f["sha"]:
                     with st.expander("✨ Előnézet bezárása", expanded=True):
                         with st.spinner("Fájl betöltése az előnézethez..."):
-                            file_res = requests.get(f["url"], headers=headers)
+                            # Itt is a speciális raw_headers-t használjuk az 1MB-os korlát megkerülésére!
+                            file_res = requests.get(f["url"], headers=raw_headers)
                             if file_res.status_code == 200:
-                                raw_bytes = base64.b64decode(file_res.json()["content"])
+                                raw_bytes = file_res.content
                                 filename_lower = f["name"].lower()
                                 
                                 # Képek megjelenítése
@@ -111,9 +121,8 @@ if check_password():
                                     pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
                                     st.markdown(pdf_display, unsafe_allow_html=True)
                                 
-                                # Minden más (Word, Excel stb.)
                                 else:
-                                    st.warning(f"A(z) '{f['name']}' fájlhoz nem érhető el közvetlen online előnézet (pl. Word/Excel). Kérlek, használd a letöltés gombot!")
+                                    st.warning(f"A(z) '{f['name']}' fájlhoz nem érhető el közvetlen online előnézet. Kérlek, használd a letöltés gombot!")
                             else:
                                 st.error("Nem sikerült letölteni a fájlt az előnézethez.")
 
