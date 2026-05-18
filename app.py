@@ -31,33 +31,28 @@ if check_password():
 
     # --- FÁJLOK ÉS KATEGÓRIÁK LEKÉRÉSE ---
     with st.spinner("Tárhely beolvasása..."):
-        # Lekérjük a teljes repó tartalmát (rekurzívan, hogy a mappák mélyére lássunk)
         res = requests.get(f"https://api.github.com/repos/{REPO}/git/trees/main?recursive=1", headers=headers)
     
-    categories = ["Főkönyvtár"] # Alapértelmezett kategória
+    categories = ["Főkönyvtár"]
     all_files = []
     
     if res.status_code == 200:
         tree = res.json().get("tree", [])
         for item in tree:
-            # Ha az elem egy mappa (tree)
             if item["type"] == "tree":
                 categories.append(item["path"])
-            # Ha az elem egy fájl (blob) és nem a rendszerfájlunk
             elif item["type"] == "blob":
                 all_files.append(item)
     
-    # Biztosítjuk, hogy a listák egyediek legyenek
     categories = sorted(list(set(categories)))
 
-    # --- KATEGÓRIA KEZELÉS SECTION ---
+    # --- KATEGÓRIA KEZELÉS SECTION (SIDEBAR) ---
     st.sidebar.header("🛠️ Kategóriák kezelése")
     new_cat = st.sidebar.text_input("Új kategória neve:")
     if st.sidebar.button("➕ Kategória létrehozása"):
         if new_cat:
             clean_cat = new_cat.strip().replace("/", "_")
             with st.spinner("Kategória létrehozása..."):
-                # Létrehozunk egy rejtett fájlt, hogy a GitHub megjelenítse a mappát
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
                 cat_res = requests.put(url, json={"message": f"Kategória létrehozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
@@ -68,24 +63,49 @@ if check_password():
         else:
             st.sidebar.warning("Adj meg egy nevet!")
 
-    # Kategória törlése
     st.sidebar.write("---")
+    
+    # Inicializáljuk a kategória törlés megerősítés állapotát
+    if "cat_delete_confirm" not in st.session_state:
+        st.session_state["cat_delete_confirm"] = False
+
     cat_to_delete = st.sidebar.selectbox("Kategória törlése:", [c for c in categories if c != "Főkönyvtár"])
-    if st.sidebar.button("🗑️ Kategória törlése", type="secondary"):
-        if cat_to_delete:
-            with st.spinner("Kategória és tartalmának törlése..."):
-                # Megkeressük az összes fájlt, ami ebben a mappában van
+    
+    # Ha még nem nyomott a törlésre, mutatjuk az alap Törlés gombot
+    if not st.session_state["cat_delete_confirm"]:
+        if st.sidebar.button("🗑️ Kategória törlése", type="secondary"):
+            if cat_to_delete:
+                st.session_state["cat_delete_confirm"] = True
+                st.rerun()
+    
+    # Ha rányomott a törlésre, elrejtjük az alap gombot és mutatjuk a megerősítést az oldalsávban
+    if st.session_state["cat_delete_confirm"]:
+        st.sidebar.warning(f"⚠️ Biztosan törlöd a(z) '{cat_to_delete}' kategóriát ÉS AZ ÖSSZES benne lévő fájlt?")
+        
+        c_yes, c_no = st.sidebar.columns([1, 1])
+        
+        if c_yes.button("🔥 Igen, mindent törölj", type="primary", key="cat_del_yes"):
+            with st.spinner("Törlés..."):
+                # 1. Töröljük a mappában lévő összes fájlt
                 files_in_cat = [f for f in all_files if f["path"].startswith(cat_to_delete + "/")]
-                success = True
-                
                 for f in files_in_cat:
                     del_url = f"https://api.github.com/repos/{REPO}/contents/{f['path']}"
-                    requests.delete(del_url, json={"message": f"Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
+                    requests.delete(del_url, json={"message": "Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
                 
-                st.sidebar.success(f"'{cat_to_delete}' kategória törölve!")
+                # 2. Töröljük a mappa rejtett rendszerfájlját is, hogy teljesen megszűnjön
+                requests.delete(f"https://api.github.com/repos/{REPO}/contents/{cat_to_delete}/.gitkeep", json={"message": "Mappa véglegesen törölve"}, headers=headers)
+                
+                # Állapot alaphelyzetbe tétele és frissítés
+                st.session_state["cat_delete_confirm"] = False
+                st.sidebar.success(f"'{cat_to_delete}' sikeresen törölve!")
                 st.rerun()
+                
+        if c_no.button("❌ Mégse", key="cat_del_no"):
+            st.session_state["cat_delete_confirm"] = False
+            st.rerun()
 
     # --- FELTÖLTÉS SECTION ---
+    st.write("---")
     st.subheader("📤 Új fájl feltöltése")
     target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
     uploaded_file = st.file_uploader("Válassz ki egy fájlt:")
@@ -93,19 +113,15 @@ if check_password():
     if uploaded_file is not None:
         file_name = uploaded_file.name
         file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-        
         st.write(f"Mért fájlméret: **{file_size_mb:.1f} MB**")
         
         if file_size_mb > 50.0:
-            st.error(f"⚠️ A GitHub API miatt maximum 50 MB-os fájlt tölthetsz fel így. Ez a fájl ({file_size_mb:.1f} MB) túl nagy.")
+            st.error(f"⚠️ A GitHub API miatt maximum 50 MB-os fájlt tölthetsz fel így.")
         else:
             if st.button("🚀 Biztonságos feltöltés indítása"):
                 with st.spinner("Feltöltés..."):
                     encoded_content = base64.b64encode(uploaded_file.read()).decode("utf-8")
-                    
-                    # Útvonal meghatározása a választott kategória alapján
                     final_path = f"{target_cat}/{file_name}" if target_cat != "Főkönyvtár" else file_name
-                    
                     url = f"https://api.github.com/repos/{REPO}/contents/{final_path}"
                     res = requests.put(url, json={"message": f"Feltöltve ide: {final_path}", "content": encoded_content}, headers=headers)
                     if res.status_code in [200, 201]:
@@ -118,21 +134,16 @@ if check_password():
 
     # --- LISTÁZÁS ÉS ELŐNÉZET SECTION ---
     st.subheader("📚 Tárolt fájljaid")
-    
-    # Kategória szűrő a főoldalon
     selected_view_cat = st.selectbox("Melyik kategóriát nézed?", categories)
     
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
-    # Fájlok szűrése a kiválasztott kategóriára
     filtered_files = []
     for f in all_files:
         path_parts = f["path"].split("/")
-        # Főkönyvtári fájlok (nincs bennük perjel)
         if selected_view_cat == "Főkönyvtár" and len(path_parts) == 1:
             filtered_files.append(f)
-        # Kategóriában lévő fájlok (és nem a rejtett .gitkeep)
         elif selected_view_cat != "Főkönyvtár" and f["path"].startswith(selected_view_cat + "/") and not f["path"].endswith(".gitkeep"):
             filtered_files.append(f)
 
@@ -140,32 +151,25 @@ if check_password():
         st.info("Ez a kategória jelenleg üres.")
     else:
         for f in filtered_files:
-            # Csak a tiszta fájlnevet mutatjuk, a mappanevet levágjuk előle a kijelzésnél
             display_name = f["path"].split("/")[-1]
-            
             col_name, col_prev, col_dl, col_del = st.columns([2, 1, 1, 1])
             col_name.write(f"📄 {display_name}")
             
-            # API URL a fájl egyedi eléréséhez
             file_api_url = f"https://api.github.com/repos/{REPO}/contents/{f['path']}"
             
-            # 1. ELŐNÉZET GOMB
             if col_prev.button("👁️", key=f"prev_{f['sha']}"):
                 st.session_state["preview_sha"] = f["sha"] if st.session_state["preview_sha"] != f["sha"] else None
                 st.rerun()
             
-            # 2. LETÖLTÉS GOMB
             if col_dl.button("📥", key=f"dl_{f['sha']}"):
                 file_res = requests.get(file_api_url, headers=raw_headers)
                 if file_res.status_code == 200:
                     st.download_button(label="💾 Mentés", data=file_res.content, file_name=display_name, key=f"save_{f['sha']}")
             
-            # 3. TÖRLES GOMB
             if col_del.button("🗑️", key=f"del_{f['sha']}"):
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- AKTÍV ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     with st.spinner("Betöltés..."):
@@ -187,7 +191,6 @@ if check_password():
                             else:
                                 st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
-            # --- AKTÍV TÖRLES MEGERŐSÍTÉSE ---
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
                 c_yes, c_no = st.columns([1, 1])
