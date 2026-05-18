@@ -4,9 +4,40 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
+from streamlit_sortables import sort_items  # Drag-and-drop komponens
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
+
+# --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
+# Ez a CSS kód közvetlenül a böngészőben formázza át a rendezőkártyákat:
+# Eltünteti a pirosat, sötétszürkévé teszi, és rákényszeríti a Sidebar szélességét.
+st.markdown(
+    """
+    <style>
+    /* Kényszerítjük a komponenst, hogy ne nyúljon túl az oldalsávon */
+    [data-testid="stSidebar"] iframe {
+        width: 100% !important;
+    }
+    /* A rendező kártyák egyedi sötét stílusa */
+    div[draggable="true"] {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid #464855 !important;
+        border-radius: 4px !important;
+        padding: 8px 12px !important;
+        margin-bottom: 6px !important;
+        box-shadow: none !important;
+    }
+    /* Hover (egér ráhúzás) effektus */
+    div[draggable="true"]:hover {
+        background-color: #31333F !important;
+        border-color: #ff4b4b !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -49,6 +80,10 @@ if check_password():
     
     detected_categories = sorted(list(set(detected_categories)))
 
+    # Alapértelmezett sorrend mentése
+    if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
+        st.session_state["current_order"] = detected_categories
+
     # --- 🛠️ 1. KATEGÓRIÁK KEZELÉSE (SIDEBAR FENT) ---
     st.sidebar.header("🛠️ Kategóriák kezelése")
     new_cat = st.sidebar.text_input("Új kategória neve:")
@@ -59,6 +94,8 @@ if check_password():
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
                 cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
+                    if "current_order" in st.session_state:
+                        del st.session_state["current_order"]
                     st.sidebar.success(f"'{clean_cat}' létrekozva!")
                     st.rerun()
                 else:
@@ -71,7 +108,7 @@ if check_password():
     if "cat_delete_confirm" not in st.session_state:
         st.session_state["cat_delete_confirm"] = False
 
-    cat_to_delete = st.sidebar.selectbox("Kategória törlése:", [c for c in detected_categories if c != "Főkönyvtár"])
+    cat_to_delete = st.sidebar.selectbox("Kategória törlése:", [c for c in st.session_state["current_order"] if c != "Főkönyvtár"])
     
     if not st.session_state["cat_delete_confirm"]:
         if st.sidebar.button("🗑️ Kategória törlése", type="secondary"):
@@ -90,6 +127,8 @@ if check_password():
                     requests.delete(del_url, json={"message": "Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
                 requests.delete(f"https://api.github.com/repos/{REPO}/contents/{cat_to_delete}/.gitkeep", json={"message": "Mappa véglegen törölve"}, headers=headers)
                 st.session_state["cat_delete_confirm"] = False
+                if "current_order" in st.session_state:
+                    del st.session_state["current_order"]
                 st.sidebar.success(f"'{cat_to_delete}' sikeresen törölve!")
                 st.rerun()
         if c_no.button("❌ Mégse", key="cat_del_no"):
@@ -98,25 +137,22 @@ if check_password():
 
     st.sidebar.write("---")
 
-    # --- 🔀 2. FÜLEK SORRENDJE (NATIV, KÖRNYEZETBE ILLŐ MULTISELECT - SIDEBAR LENT) ---
+    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT - PONTOSAN A TÖRLES ALATT) ---
     st.sidebar.header("🔀 Fülek sorrendje")
-    st.sidebar.caption("Kattints rájuk a kívánt megjelenési sorrendben:")
+    st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
-    # Natív sorrendező doboz, ami tökéletesen beépül és felveszi a szürke designt
-    sorted_categories = st.sidebar.multiselect(
-        label="Sorrend testreszabása",
-        options=detected_categories,
-        default=detected_categories,
-        label_visibility="collapsed"
-    )
+    with st.sidebar:
+        sorted_categories = sort_items(
+            st.session_state["current_order"], 
+            direction="vertical", 
+            key="sidebar_sortable_clean_v3"
+        )
+    
+    if sorted_categories != st.session_state["current_order"]:
+        st.session_state["current_order"] = sorted_categories
+        st.rerun()
 
-    # Biztosítjuk, hogy ha valamit véletlenül kivesz a listából, a háttérben ne vesszen el a fül
-    if not sorted_categories:
-        categories = detected_categories
-    else:
-        # Ha valami kimaradt a multiselectből, azt fűzzük a végére, hogy elérhető maradjon
-        missing = [c for c in detected_categories if c not in sorted_categories]
-        categories = sorted_categories + missing
+    categories = st.session_state["current_order"]
 
     # --- FELTÖLTÉS SECTION (NAGY FÁJL TÁMOGATÁSSAL) ---
     st.write("---")
