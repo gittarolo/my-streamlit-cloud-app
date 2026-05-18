@@ -3,3 +3,4 @@ requests
 pdf2image
 pandas
 openpyxl
+xlrd
