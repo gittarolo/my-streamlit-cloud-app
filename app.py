@@ -10,8 +10,6 @@ from streamlit_sortables import sort_items  # Drag-and-drop komponens
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
 # --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
-# Ez a CSS kód közvetlenül a böngészőben formázza át a rendezőkártyákat:
-# Eltünteti a pirosat, sötétszürkévé teszi, és rákényszeríti a Sidebar szélességét.
 st.markdown(
     """
     <style>
@@ -74,16 +72,20 @@ if check_password():
         tree = res.json().get("tree", [])
         for item in tree:
             if item["type"] == "tree":
-                # Csak a valódi almappákat gyűjtjük be, a Főkönyvtár nevét nem rakjuk bele
-                detected_categories.append(item["path"])
+                # Biztosítjuk, hogy a Főkönyvtár semmiképp se kerüljön be a listába
+                if item["path"] != "Főkönyvtár":
+                    detected_categories.append(item["path"])
             elif item["type"] == "blob":
                 all_files.append(item)
     
     detected_categories = sorted(list(set(detected_categories)))
 
-    # Alapértelmezett sorrend mentése
+    # Alapértelmezett sorrend mentése és kényszerített tisztítása
     if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
-        st.session_state["current_order"] = detected_categories
+        st.session_state["current_order"] = [c for c in detected_categories if c != "Főkönyvtár"]
+    else:
+        # Ha már létezik a session, abból is menet közben kiszűrjük a biztonság kedvéért
+        st.session_state["current_order"] = [c for c in st.session_state["current_order"] if c != "Főkönyvtár"]
 
     # --- 🛠️ 1. KATEGÓRIÁK KEZELÉSE (SIDEBAR FENT) ---
     st.sidebar.header("🛠️ Kategóriák kezelése")
@@ -91,16 +93,19 @@ if check_password():
     if st.sidebar.button("➕ Kategória létrehozása"):
         if new_cat:
             clean_cat = new_cat.strip().replace("/", "_")
-            with st.spinner("Kategória létrekozása..."):
-                url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
-                cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
-                if cat_res.status_code in [200, 201]:
-                    if "current_order" in st.session_state:
-                        del st.session_state["current_order"]
-                    st.sidebar.success(f"'{clean_cat}' létrekozva!")
-                    st.rerun()
-                else:
-                    st.sidebar.error("Nem sikerült létrehozni.")
+            if clean_cat == "Főkönyvtár":
+                st.sidebar.error("Ezzel a névvel nem hozhatsz létre kategóriát!")
+            else:
+                with st.spinner("Kategória létrekozása..."):
+                    url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
+                    cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
+                    if cat_res.status_code in [200, 201]:
+                        if "current_order" in st.session_state:
+                            del st.session_state["current_order"]
+                        st.sidebar.success(f"'{clean_cat}' létrekozva!")
+                        st.rerun()
+                    else:
+                        st.sidebar.error("Nem sikerült létrehozni.")
         else:
             st.sidebar.warning("Adj meg egy nevet!")
 
@@ -142,11 +147,14 @@ if check_password():
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
+    # Duplán biztosítjuk, hogy a rendezőbe csak tiszta mappa nevek menjenek be
+    clean_sort_list = [c for c in st.session_state["current_order"] if c != "Főkönyvtár"]
+
     with st.sidebar:
         sorted_categories = sort_items(
-            st.session_state["current_order"], 
+            clean_sort_list, 
             direction="vertical", 
-            key="sidebar_sortable_clean_v3"
+            key="sidebar_sortable_clean_v4"
         )
     
     if sorted_categories != st.session_state["current_order"]:
