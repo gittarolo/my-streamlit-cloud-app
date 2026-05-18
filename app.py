@@ -4,10 +4,40 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
-from streamlit_sortables import sort_items  # Új drag-and-drop komponens importálása
+from streamlit_sortables import sort_items  # Drag-and-drop komponens
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
+
+# --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
+# Ez a CSS kód közvetlenül a böngészőben formázza át a rendezőkártyákat:
+# Eltünteti a pirosat, sötétszürkévé teszi, és rákényszeríti a Sidebar szélességét.
+st.markdown(
+    """
+    <style>
+    /* Kényszerítjük a komponenst, hogy ne nyúljon túl az oldalsávon */
+    [data-testid="stSidebar"] iframe {
+        width: 100% !important;
+    }
+    /* A rendező kártyák egyedi sötét stílusa */
+    div[draggable="true"] {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid #464855 !important;
+        border-radius: 4px !important;
+        padding: 8px 12px !important;
+        margin-bottom: 6px !important;
+        box-shadow: none !important;
+    }
+    /* Hover (egér ráhúzás) effektus */
+    div[draggable="true"]:hover {
+        background-color: #31333F !important;
+        border-color: #ff4b4b !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -50,7 +80,7 @@ if check_password():
     
     detected_categories = sorted(list(set(detected_categories)))
 
-    # Alapértelmezett sorrend beállítása session_state-ben
+    # Alapértelmezett sorrend mentése
     if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
         st.session_state["current_order"] = detected_categories
 
@@ -107,26 +137,15 @@ if check_password():
 
     st.sidebar.write("---")
 
-    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT, TÖRLÉS ALATT) ---
+    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT - PONTOSAN A TÖRLES ALATT) ---
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
-
-    # Beépített stílus szótár, ami a gombok hátterét sötétszürkévé teszi, eltüntetve a piros színt
-    custom_styles = {
-        "backgroundColor": "#262730",
-        "color": "#FFFFFF",
-        "border": "1px solid #464855",
-        "borderRadius": "4px",
-        "padding": "8px 12px",
-        "margin": "4px 0px"
-    }
 
     with st.sidebar:
         sorted_categories = sort_items(
             st.session_state["current_order"], 
             direction="vertical", 
-            key="sidebar_sortable_panel_fixed",
-            container_styles=custom_styles
+            key="sidebar_sortable_clean_v3"
         )
     
     if sorted_categories != st.session_state["current_order"]:
@@ -185,7 +204,7 @@ if check_password():
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
-    # --- 📚 DINAMIKUS FÜLEK (TABS) LÉTREHOZÁSA ---
+    # --- DINAMIKUS FÜLEK (TABS) LÉTREHOZÁSA ---
     tabs = st.tabs(categories)
 
     for i, tab in enumerate(tabs):
