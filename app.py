@@ -5,7 +5,6 @@ import base64
 # Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="centered")
 
-# Jelszó ellenőrző függvény (maradt a régi)
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -23,122 +22,180 @@ def check_password():
 
 if check_password():
     st.title("📁 Saját Felhő Tárhelyem")
-    st.info("Max 50MB")
 
     TOKEN = st.secrets["GITHUB_TOKEN"]
     REPO = st.secrets["GITHUB_REPO"]
     
-    # Alapértelmezett API fejléc
-    headers = {
-        "Authorization": f"token {TOKEN}", 
-        "Accept": "application/vnd.github.v3+json"
-    }
+    headers = {"Authorization": f"token {TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    raw_headers = {"Authorization": f"token {TOKEN}", "Accept": "application/vnd.github.v3.raw"}
+
+    # --- FÁJLOK ÉS KATEGÓRIÁK LEKÉRÉSE ---
+    with st.spinner("Tárhely beolvasása..."):
+        # Lekérjük a teljes repó tartalmát (rekurzívan, hogy a mappák mélyére lássunk)
+        res = requests.get(f"https://api.github.com/repos/{REPO}/git/trees/master?recursive=1", headers=headers)
     
-    # Speciális fejléc a NYERS (raw) fájltartalom közvetlen letöltéséhez méretkorlát nélkül
-    raw_headers = {
-        "Authorization": f"token {TOKEN}",
-        "Accept": "application/vnd.github.v3.raw"
-    }
+    categories = ["Főkönyvtár"] # Alapértelmezett kategória
+    all_files = []
+    
+    if res.status_code == 200:
+        tree = res.json().get("tree", [])
+        for item in tree:
+            # Ha az elem egy mappa (tree)
+            if item["type"] == "tree":
+                categories.append(item["path"])
+            # Ha az elem egy fájl (blob) és nem a rendszerfájlunk
+            elif item["type"] == "blob":
+                all_files.append(item)
+    
+    # Biztosítjuk, hogy a listák egyediek legyenek
+    categories = sorted(list(set(categories)))
+
+    # --- KATEGÓRIA KEZELÉS SECTION ---
+    st.sidebar.header("🛠️ Kategóriák kezelése")
+    new_cat = st.sidebar.text_input("Új kategória neve:")
+    if st.sidebar.button("➕ Kategória létrehozása"):
+        if new_cat:
+            clean_cat = new_cat.strip().replace("/", "_")
+            with st.spinner("Kategória létrehozása..."):
+                # Létrehozunk egy rejtett fájlt, hogy a GitHub megjelenítse a mappát
+                url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
+                cat_res = requests.put(url, json={"message": f"Kategória létrehozva: {clean_cat}", "content": "XA=="}, headers=headers)
+                if cat_res.status_code in [200, 201]:
+                    st.sidebar.success(f"'{clean_cat}' létrehozva!")
+                    st.rerun()
+                else:
+                    st.sidebar.error("Nem sikerült létrehozni.")
+        else:
+            st.sidebar.warning("Adj meg egy nevet!")
+
+    # Kategória törlése
+    st.sidebar.write("---")
+    cat_to_delete = st.sidebar.selectbox("Kategória törlése:", [c for c in categories if c != "Főkönyvtár"])
+    if st.sidebar.button("🗑️ Kategória törlése", type="secondary"):
+        if cat_to_delete:
+            with st.spinner("Kategória és tartalmának törlése..."):
+                # Megkeressük az összes fájlt, ami ebben a mappában van
+                files_in_cat = [f for f in all_files if f["path"].startswith(cat_to_delete + "/")]
+                success = True
+                
+                for f in files_in_cat:
+                    del_url = f"https://api.github.com/repos/{REPO}/contents/{f['path']}"
+                    requests.delete(del_url, json={"message": f"Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
+                
+                st.sidebar.success(f"'{cat_to_delete}' kategória törölve!")
+                st.rerun()
 
     # --- FELTÖLTÉS SECTION ---
     st.subheader("📤 Új fájl feltöltése")
+    target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
     uploaded_file = st.file_uploader("Válassz ki egy fájlt:")
+    
     if uploaded_file is not None:
         file_name = uploaded_file.name
-        if st.button("🚀 Biztonságos feltöltés indítása"):
-            with st.spinner("Feltöltés..."):
-                encoded_content = base64.b64encode(uploaded_file.read()).decode("utf-8")
-                url = f"https://api.github.com/repos/{REPO}/contents/{file_name}"
-                res = requests.put(url, json={"message": f"Feltöltve: {file_name}", "content": encoded_content}, headers=headers)
-                if res.status_code in [200, 201]:
-                    st.success("Sikeres feltöltés!")
-                    st.rerun()
-                else:
-                    st.error("Hiba történt a feltöltésnél.")
+        file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
+        
+        st.write(f"Mért fájlméret: **{file_size_mb:.1f} MB**")
+        
+        if file_size_mb > 50.0:
+            st.error(f"⚠️ A GitHub API miatt maximum 50 MB-os fájlt tölthetsz fel így. Ez a fájl ({file_size_mb:.1f} MB) túl nagy.")
+        else:
+            if st.button("🚀 Biztonságos feltöltés indítása"):
+                with st.spinner("Feltöltés..."):
+                    encoded_content = base64.b64encode(uploaded_file.read()).decode("utf-8")
+                    
+                    # Útvonal meghatározása a választott kategória alapján
+                    final_path = f"{target_cat}/{file_name}" if target_cat != "Főkönyvtár" else file_name
+                    
+                    url = f"https://api.github.com/repos/{REPO}/contents/{final_path}"
+                    res = requests.put(url, json={"message": f"Feltöltve ide: {final_path}", "content": encoded_content}, headers=headers)
+                    if res.status_code in [200, 201]:
+                        st.success("Sikeres feltöltés!")
+                        st.rerun()
+                    else:
+                        st.error("Hiba történt a feltöltésnél.")
 
     st.write("---")
 
     # --- LISTÁZÁS ÉS ELŐNÉZET SECTION ---
     st.subheader("📚 Tárolt fájljaid")
     
+    # Kategória szűrő a főoldalon
+    selected_view_cat = st.selectbox("Melyik kategóriát nézed?", categories)
+    
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
-    with st.spinner("Frissítés..."):
-        res = requests.get(f"https://api.github.com/repos/{REPO}/contents/", headers=headers)
-        
-    if res.status_code == 200:
-        valid_files = [f for f in res.json() if f["type"] == "file"]
-        
-        if not valid_files:
-            st.write("A tárhely üres.")
-        else:
-            for f in valid_files:
-                col_name, col_prev, col_dl, col_del = st.columns([2, 1, 1, 1])
-                col_name.write(f"📄 {f['name']}")
-                
-                # 1. ELŐNÉZET GOMB (Szem ikon)
-                if col_prev.button("👁️", key=f"prev_btn_{f['sha']}", help="Előnézet"):
-                    st.session_state["preview_sha"] = f["sha"] if st.session_state["preview_sha"] != f["sha"] else None
-                    st.rerun()
-                
-                # 2. LETÖLTÉS GOMB
-                if col_dl.button("📥", key=f"dl_btn_{f['sha']}", help="Letöltés"):
-                    # A raw_headers segítségével közvetlenül a tiszta bináris adatot kérjük le
-                    file_res = requests.get(f["url"], headers=raw_headers)
-                    if file_res.status_code == 200:
-                        st.download_button(label="💾 Mentés", data=file_res.content, file_name=f["name"], key=f"save_{f['sha']}")
-                
-                # 3. TÖRLES GOMB
-                if col_del.button("🗑️", key=f"del_btn_{f['sha']}", help="Törlés"):
-                    st.session_state["delete_confirm_sha"] = f["sha"]
-                    st.rerun()
+    # Fájlok szűrése a kiválasztott kategóriára
+    filtered_files = []
+    for f in all_files:
+        path_parts = f["path"].split("/")
+        # Főkönyvtári fájlok (nincs bennük perjel)
+        if selected_view_cat == "Főkönyvtár" and len(path_parts) == 1:
+            filtered_files.append(f)
+        # Kategóriában lévő fájlok (és nem a rejtett .gitkeep)
+        elif selected_view_cat != "Főkönyvtár" and f["path"].startswith(selected_view_cat + "/") and not f["path"].endswith(".gitkeep"):
+            filtered_files.append(f)
 
-                # --- 👁️ AKTÍV ELŐNÉZET MEGJELENÍTÉSE ---
-                if st.session_state["preview_sha"] == f["sha"]:
-                    with st.expander("✨ Előnézet bezárása", expanded=True):
-                        with st.spinner("Fájl betöltése az előnézethez..."):
-                            # Itt is a speciális raw_headers-t használjuk az 1MB-os korlát megkerülésére!
-                            file_res = requests.get(f["url"], headers=raw_headers)
-                            if file_res.status_code == 200:
-                                raw_bytes = file_res.content
-                                filename_lower = f["name"].lower()
-                                
-                                # Képek megjelenítése
-                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                    st.image(raw_bytes, use_container_width=True)
-                                
-                                # Videók lejátszása
-                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                    st.video(raw_bytes)
-                                
-                                # Zenék / Hangfájlok lejátszása
-                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                    st.audio(raw_bytes)
-                                
-                                # PDF megjelenítése
-                                elif filename_lower.endswith('.pdf'):
-                                    base64_pdf = base64.b64encode(raw_bytes).decode('utf-8')
-                                    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-                                    st.markdown(pdf_display, unsafe_allow_html=True)
-                                
-                                else:
-                                    st.warning(f"A(z) '{f['name']}' fájlhoz nem érhető el közvetlen online előnézet. Kérlek, használd a letöltés gombot!")
-                            else:
-                                st.error("Nem sikerült letölteni a fájlt az előnézethez.")
-
-                # --- 🗑️ AKTÍV TÖRLES MEGERŐSÍTÉSE ---
-                if st.session_state["delete_confirm_sha"] == f["sha"]:
-                    st.warning(f"⚠️ Biztosan törlöd: '{f['name']}'?")
-                    c_yes, c_no = st.columns([1, 1])
-                    if c_yes.button("🔥 Igen", key=f"y_{f['sha']}", type="primary"):
-                        res = requests.delete(f"https://api.github.com/repos/{REPO}/contents/{f['name']}", json={"message": "Törölve", "sha": f["sha"]}, headers=headers)
-                        if res.status_code == 200:
-                            st.session_state["delete_confirm_sha"] = None
-                            st.rerun()
-                    if c_no.button("❌ Mégse", key=f"n_{f['sha']}"):
-                        st.session_state["delete_confirm_sha"] = None
-                        st.rerun()
-                    st.write("---")
+    if not filtered_files:
+        st.info("Ez a kategória jelenleg üres.")
     else:
-        st.error("Nem sikerült elérni a GitHub tárhelyet.")
+        for f in filtered_files:
+            # Csak a tiszta fájlnevet mutatjuk, a mappanevet levágjuk előle a kijelzésnél
+            display_name = f["path"].split("/")[-1]
+            
+            col_name, col_prev, col_dl, col_del = st.columns([2, 1, 1, 1])
+            col_name.write(f"📄 {display_name}")
+            
+            # API URL a fájl egyedi eléréséhez
+            file_api_url = f"https://api.github.com/repos/{REPO}/contents/{f['path']}"
+            
+            # 1. ELŐNÉZET GOMB
+            if col_prev.button("👁️", key=f"prev_{f['sha']}"):
+                st.session_state["preview_sha"] = f["sha"] if st.session_state["preview_sha"] != f["sha"] else None
+                st.rerun()
+            
+            # 2. LETÖLTÉS GOMB
+            if col_dl.button("📥", key=f"dl_{f['sha']}"):
+                file_res = requests.get(file_api_url, headers=raw_headers)
+                if file_res.status_code == 200:
+                    st.download_button(label="💾 Mentés", data=file_res.content, file_name=display_name, key=f"save_{f['sha']}")
+            
+            # 3. TÖRLES GOMB
+            if col_del.button("🗑️", key=f"del_{f['sha']}"):
+                st.session_state["delete_confirm_sha"] = f["sha"]
+                st.rerun()
+
+            # --- AKTÍV ELŐNÉZET ---
+            if st.session_state["preview_sha"] == f["sha"]:
+                with st.expander("✨ Előnézet bezárása", expanded=True):
+                    with st.spinner("Betöltés..."):
+                        file_res = requests.get(file_api_url, headers=raw_headers)
+                        if file_res.status_code == 200:
+                            raw_bytes = file_res.content
+                            filename_lower = display_name.lower()
+                            
+                            if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                st.image(raw_bytes, use_container_width=True)
+                            elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                st.video(raw_bytes)
+                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                st.audio(raw_bytes)
+                            elif filename_lower.endswith('.pdf'):
+                                base64_pdf = base64.b64encode(raw_bytes).decode('utf-8')
+                                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+                                st.markdown(pdf_display, unsafe_allow_html=True)
+                            else:
+                                st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
+
+            # --- AKTÍV TÖRLES MEGERŐSÍTÉSE ---
+            if st.session_state["delete_confirm_sha"] == f["sha"]:
+                st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
+                c_yes, c_no = st.columns([1, 1])
+                if c_yes.button("🔥 Igen", key=f"y_{f['sha']}", type="primary"):
+                    requests.delete(file_api_url, json={"message": "Törölve", "sha": f["sha"]}, headers=headers)
+                    st.session_state["delete_confirm_sha"] = None
+                    st.rerun()
+                if c_no.button("❌ Mégse", key=f"n_{f['sha']}"):
+                    st.session_state["delete_confirm_sha"] = None
+                    st.rerun()
+                st.write("---")
