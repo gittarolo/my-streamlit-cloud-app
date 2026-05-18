@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import base64
+import urllib.parse
 import pandas as pd
 import io
 
@@ -54,7 +55,7 @@ if check_password():
     if st.sidebar.button("➕ Kategória létrehozása"):
         if new_cat:
             clean_cat = new_cat.strip().replace("/", "_")
-            with st.spinner("Kategória létrehozása..."):
+            with st.spinner("Kategória létrekozása..."):
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
                 cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
@@ -95,7 +96,7 @@ if check_password():
             st.session_state["cat_delete_confirm"] = False
             st.rerun()
 
-    # --- FELTÖLTÉS SECTION ---
+    # --- FELTÖLTÉS SECTION (NAGY FÁJL TÁMOGATÁSSAL) ---
     st.write("---")
     st.subheader("📤 Új fájl feltöltése")
     target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
@@ -222,61 +223,55 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ HELYI INTELLIGENS ELŐNÉZET ---
+            # --- 👁️ AKTÍV INTELLIGENS ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    with st.spinner("Fájl olvasása..."):
-                        file_res = requests.get(file_api_url, headers=raw_headers)
-                        
-                        if file_res.status_code == 200:
-                            raw_bytes = file_res.content
-                            
-                            # 1. TÁBLÁZATOK NATÍV MEGJELENÍTÉSE (CSV, EXCEL)
-                            if filename_lower.endswith(('.xlsx', '.xls', '.csv')):
+                    # 1. INTERAKTÍV TÁBLÁZATOK HELYBEN (CSV, EXCEL)
+                    if filename_lower.endswith(('.xlsx', '.xls', '.csv')):
+                        with st.spinner("Táblázat beolvasása..."):
+                            file_res = requests.get(file_api_url, headers=raw_headers)
+                            if file_res.status_code == 200:
                                 try:
-                                    # Ha CSV fájl
                                     if filename_lower.endswith('.csv'):
-                                        df = pd.read_csv(io.BytesIO(raw_bytes))
-                                    # Ha Excel fájl (.xls vagy .xlsx)
+                                        df = pd.read_csv(io.BytesIO(file_res.content))
                                     else:
-                                        df = pd.read_excel(io.BytesIO(raw_bytes))
-                                    
-                                    st.success(f"📊 Adatok sikeresen beolvasva ({df.shape[0]} sor, {df.shape[1]} oszlop)")
-                                    
-                                    # Megjelenítés interaktív, görgethető, kereshető táblázatként
+                                        df = pd.read_excel(io.BytesIO(file_res.content))
+                                    st.success(f"📊 {df.shape[0]} sor, {df.shape[1]} oszlop betöltve.")
                                     st.dataframe(df, use_container_width=True)
                                 except Exception as e:
-                                    st.error("Nem sikerült beolvasni a táblázatot. Győződj meg róla, hogy nem sérült a fájl!")
-
-                            # 2. VIDEÓK KEZELÉSE
-                            elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                st.video(raw_bytes)
-                                
-                            # 3. PDF DOKUMENTUMOK KEZELÉSE (KÉPEKKÉ ALAKÍTÁS)
-                            elif filename_lower.endswith('.pdf'):
-                                try:
-                                    from pdf2image import convert_from_bytes
-                                    images = convert_from_bytes(raw_bytes)
-                                    st.success(f"📖 Sikeresen betöltve: {len(images)} oldal")
-                                    for i, img in enumerate(images):
-                                        st.caption(f"{i+1}. Oldal")
-                                        st.image(img, use_container_width=True)
-                                except Exception as e:
-                                    st.error("Hiba a PDF feldolgozásakor. Ellenőrizd a requirements.txt fájlt!")
-                                    
-                            # 4. NORMÁL KÉPEK KEZELÉSE
-                            elif filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                st.image(raw_bytes, use_container_width=True)
-                                
-                            # 5. HANGMINDÁK KEZELÉSE
-                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                st.audio(raw_bytes)
+                                    st.error("Nem sikerült beolvasni a táblázatot.")
                             else:
-                                st.warning("Ehhez a fájltípushoz nincs közvetlen online előnézet. Töltsd le a megtekintéshez!")
-                        else:
-                            st.error("Nem sikerült letölteni a fájlt a tárhelyről.")
+                                st.error("Hiba a fájl letöltésekor.")
+
+                    # 2. DOKUMENTUMOK (PDF, WORD, PPT) - A BEVÁLT GOOGLE IFRAME MÓDSZEREDDEL
+                    elif filename_lower.endswith(('.pdf', '.docx', '.doc', '.pptx', '.ppt')):
+                        with st.spinner("Dokumentum előkészítése az olvasóhoz..."):
+                            meta_res = requests.get(file_api_url, headers=headers)
+                            if meta_res.status_code == 200:
+                                download_url = meta_res.json().get("download_url")
+                                encoded_url = urllib.parse.quote(download_url)
+                                google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
+                                iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
+                                st.markdown(iframe_code, unsafe_allow_html=True)
+                            else:
+                                st.error("Nem sikerült lekérni a fájl adatait a GitHubról.")
+
+                    # 3. KÉPEK, VIDEÓK, HANGOK NATÍV BETÖLTÉSE
+                    else:
+                        with st.spinner("Médiafájl betöltése..."):
+                            file_res = requests.get(file_api_url, headers=raw_headers)
+                            if file_res.status_code == 200:
+                                raw_bytes = file_res.content
+                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                    st.image(raw_bytes, use_container_width=True)
+                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                    st.video(raw_bytes)
+                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                    st.audio(raw_bytes)
+                            else:
+                                st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
