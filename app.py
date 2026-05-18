@@ -131,7 +131,7 @@ if check_password():
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
-    # ÚJ ÁTHELYEZÉSI PANEL
+    # ÁTHELYEZÉSI PANEL
     if st.session_state["move_file_sha"] is not None:
         with st.container(border=True):
             st.markdown(f"📂 **Fájl áthelyezése:** `{st.session_state['move_file_name']}`")
@@ -207,42 +207,39 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET (MÓDOSÍTVA PDF JAVÍTÁSSAL) ---
+            # --- 👁️ AKTÍV ELŐNÉZET (ÚJ KÖZVETLEN GITHUB LINK LOGIKÁVAL) ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
-                    with st.spinner("Betöltés..."):
-                        file_res = requests.get(file_api_url, headers=raw_headers)
-                        if file_res.status_code == 200:
-                            raw_bytes = file_res.content
-                            filename_lower = display_name.lower()
-                            
-                            if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                st.image(raw_bytes, use_container_width=True)
-                            elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                st.video(raw_bytes)
-                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                st.audio(raw_bytes)
-                            
-                            # --- 🛠️ JAVÍTOTT PDF-MEGJELENÍTÉS BÖNGÉSZŐ-BLOKKOLÁS ELLEN ---
-                            elif filename_lower.endswith('.pdf'):
-                                base64_pdf = base64.b64encode(raw_bytes).decode('utf-8')
-                                pdf_url = f"data:application/pdf;base64,{base64_pdf}"
-                                
-                                st.info("ℹ️ A böngészők biztonsági szabályai miatt a nagy méretű PDF-eket beágyazva blokkolhatják.")
-                                
-                                # Adunk egy elegáns gombot, ami egy tiszta, új lapon nyitja meg a PDF-et a böngésző saját olvasójában
-                                st.markdown(
-                                    f'<a href="{pdf_url}" target="_blank" style="text-decoration: none;">'
-                                    f'<div style="padding: 10px; background-color: #FF4B4B; color: white; '
-                                    f'text-align: center; border-radius: 5px; font-weight: bold; margin-bottom: 15px;">'
-                                    f'📖 PDF megnyitása teljes képernyőn (új lapon)'
-                                    f'</div></a>', 
-                                    unsafe_allow_html=True
-                                )
-                                
-                                # Biztonsági tartalékként azért megpróbáljuk renderelni hátha kisebb fájloknál működik
-                                pdf_display = f'<iframe src="{pdf_url}" width="100%" height="500" type="application/pdf"></iframe>'
-                                st.markdown(pdf_display, unsafe_allow_html=True)
+                    filename_lower = display_name.lower()
+                    
+                    if filename_lower.endswith('.pdf'):
+                        # Generálunk egy közvetlen Raw linket a GitHub-hoz, amibe biztonságosan beágyazzuk a tokent
+                        # Így a böngésző nem a Streamlit memóriájából, hanem egyenesen a GitHub villámgyors CDN szerveréről olvassa a fájlt!
+                        direct_raw_url = f"https://raw.githubusercontent.com/{REPO}/main/{f['path']}?token={TOKEN}"
+                        
+                        st.success("🎯 Közvetlen megtekintő link generálva!")
+                        st.markdown(
+                            f'<a href="{direct_raw_url}" target="_blank" style="text-decoration: none;">'
+                            f'<div style="padding: 12px; background-color: #FF4B4B; color: white; '
+                            f'text-align: center; border-radius: 6px; font-weight: bold; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
+                            f'📖 PDF megnyitása azonnal (új lapon)'
+                            f'</div></a>', 
+                            unsafe_allow_html=True
+                        )
+                        st.caption("A gombra kattintva a PDF egy új, tiszta lapon fog megnyílni, villámgyors betöltéssel.")
+                        
+                    else:
+                        # Képek, videók, hangfájlok maradhatnak az eredeti letöltős mederben, mert azok kisebbek
+                        with st.spinner("Betöltés..."):
+                            file_res = requests.get(file_api_url, headers=raw_headers)
+                            if file_res.status_code == 200:
+                                raw_bytes = file_res.content
+                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                    st.image(raw_bytes, use_container_width=True)
+                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                    st.video(raw_bytes)
+                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                    st.audio(raw_bytes)
                             else:
                                 st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
