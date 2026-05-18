@@ -9,28 +9,34 @@ from streamlit_sortables import sort_items
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
-# --- 🎨 GLOBÁLIS CSS A KÁRTYÁK BELSŐ ELEMEIHEZ ÉS SZEGÉLYEIHEZ ---
-st.markdown(
+# --- 🚀 JAVASCRIPTALAPÚ MÁGIKUS ÁTSZÍNEZŐ (NINCS TÖBB PYTHON HIBA) ---
+# Mivel a Python paraméterekre összeomlik a komponens, ez a JS kód a háttérben 
+# megkeresi az iFrame-en belüli piros kártyákat, és átfesti őket az app sötét szürke színére.
+st.components.v1.html(
     """
-    <style>
-    /* Elfedjük a külső komponens által generált esetleges extra piros részleteket és a belső szövegdobozokat */
-    [data-testid="stSidebar"] div[draggable="true"] {
-        background-color: #262730 !important;
-        border: 1px solid #464855 !important;
-        border-radius: 6px !important;
+    <script>
+    function colorizeCards() {
+        // Megkeressük az összes drag-and-drop kártyát a képernyőn
+        const cards = window.parent.document.querySelectorAll('div[draggable="true"]');
+        cards.forEach(card => {
+            // Ráerőltetjük a letisztult sötét dizájnt a beégetett piros helyett
+            card.style.setProperty('background-color', '#262730', 'important');
+            card.style.setProperty('background', '#262730', 'important');
+            card.style.setProperty('color', '#ffffff', 'important');
+            card.style.setProperty('border', '1px solid #464855', 'important');
+            card.style.setProperty('border-radius', '6px', 'important');
+            
+            // Biztosítjuk, hogy a belső szöveg is fehér legyen
+            const texts = card.querySelectorAll('*');
+            texts.forEach(t => t.style.setProperty('color', '#ffffff', 'important'));
+        });
     }
-    /* Biztosítjuk, hogy a szöveg fehér legyen és ne örököljön piros árnyékot */
-    [data-testid="stSidebar"] div[draggable="true"] * {
-        color: #ffffff !important;
-        text-shadow: none !important;
-    }
-    /* Kártyák közötti távolság finomítása */
-    .sortable-container > div {
-        margin-bottom: 8px !important;
-    }
-    </style>
+    
+    // Folyamatosan figyeljük és frissítjük a színeket, ha a felhasználó húzgálja őket
+    setInterval(colorizeCards, 100);
+    </script>
     """,
-    unsafe_allow_html=True
+    height=0, # Teljesen láthatatlan marad a felületen
 )
 
 def check_password():
@@ -135,25 +141,12 @@ if check_password():
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
-    # Ide ágyazzuk be a komponenst testreszabott beépített stílus szótárral (dict),
-    # ami közvetlenül felülírja a beégetett piros beállításokat.
-    custom_item_styles = {
-        "background-color": "#262730",
-        "background": "#262730",
-        "color": "#ffffff",
-        "border": "1px solid #464855",
-        "border-radius": "6px",
-        "padding": "10px",
-        "margin-bottom": "6px",
-        "box-shadow": "none"
-    }
-
+    # Tisztán, gyári paraméterekkel hívjuk meg, a JavaScript végzi el a színezést!
     with st.sidebar:
         sorted_categories = sort_items(
             st.session_state["current_order"], 
             direction="vertical", 
-            key="sidebar_sortable_final_v1",
-            item_styles=custom_item_styles  # Ez a paraméter közvetlenül az elem szintjén írja felül a piros színt!
+            key="sidebar_sortable_clean"
         )
     
     if sorted_categories != st.session_state["current_order"]:
