@@ -9,38 +9,6 @@ from streamlit_sortables import sort_items  # Új drag-and-drop komponens import
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
-# --- 🎨 EGYEDI JAVÍTÁS A RENDEZŐ KÁRTYÁKHOZ ---
-# Ez a kis CSS kód kényszeríti a sortables kártyákat, hogy beilleszkedjenek a Sidebar méretébe,
-# és a csúnya piros helyett elegáns, a környezetbe olvadó sötét szürke hátteret kapjanak.
-st.markdown(
-    """
-    <style>
-    /* A sortables konténer szélességének korlátozása a Sidebarhoz */
-    [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] + div {
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-    /* A kártyák egyedi formázása: sötét háttér, fehér szöveg, finom keret */
-    .st-key-sidebar_sortable_panel_unique div div div[draggable="true"] {
-        background-color: #262730 !important;
-        color: #ffffff !important;
-        border: 1px solid #464855 !important;
-        border-radius: 4px !important;
-        padding: 8px 12px !important;
-        margin-bottom: 6px !important;
-        box-shadow: none !important;
-        font-size: 14px !important;
-    }
-    /* Egér ráhúzáskor (hover) egy picit világosabb legyen */
-    .st-key-sidebar_sortable_panel_unique div div div[draggable="true"]:hover {
-        background-color: #31333F !important;
-        border-color: #ff4b4b !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -82,33 +50,11 @@ if check_password():
     
     detected_categories = sorted(list(set(detected_categories)))
 
-    # --- 🎛️ DRAG-AND-DROP SORRENDEZÉS PANEL (KIFEJEZETTEN A SIDEBARBAN) ---
-    st.sidebar.header("🔀 Fülek sorrendje")
-    st.sidebar.caption("Fogd meg az egérrel a mappákat és húzd őket a kívánt sorrendbe:")
-    
-    # Session state-ben eltároljuk az aktuális sorrendet, hogy ne ugorjon vissza alaphelyzetbe gombnyomáskor
+    # Alapértelmezett sorrend beállítása session_state-ben
     if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
         st.session_state["current_order"] = detected_categories
 
-    # ITT TÖRTÉNT A VÁLTOZÁS: st.sidebar.-al kényszerítjük be a bal oldali sávba, 
-    # és kapott egy teljesen új, egyedi key azonosítót, hogy a gyorsítótár ürüljön.
-    with st.sidebar:
-        sorted_categories = sort_items(
-            st.session_state["current_order"], 
-            direction="vertical", 
-            key="sidebar_sortable_panel_unique"
-        )
-    
-    # Frissítjük a sorrendet a választás alapján
-    if sorted_categories != st.session_state["current_order"]:
-        st.session_state["current_order"] = sorted_categories
-        st.rerun()
-
-    categories = st.session_state["current_order"]
-
-    st.sidebar.write("---")
-
-    # --- KATEGÓRIA KEZELÉS SECTION (SIDEBAR) ---
+    # --- 🛠️ 1. KATEGÓRIÁK KEZELÉSE (SIDEBAR FENT) ---
     st.sidebar.header("🛠️ Kategóriák kezelése")
     new_cat = st.sidebar.text_input("Új kategória neve:")
     if st.sidebar.button("➕ Kategória létrehozása"):
@@ -132,7 +78,7 @@ if check_password():
     if "cat_delete_confirm" not in st.session_state:
         st.session_state["cat_delete_confirm"] = False
 
-    cat_to_delete = st.sidebar.selectbox("Kategória törlése:", [c for c in categories if c != "Főkönyvtár"])
+    cat_to_delete = st.sidebar.selectbox("Kategória törlése:", [c for c in st.session_state["current_order"] if c != "Főkönyvtár"])
     
     if not st.session_state["cat_delete_confirm"]:
         if st.sidebar.button("🗑️ Kategória törlése", type="secondary"):
@@ -158,6 +104,36 @@ if check_password():
         if c_no.button("❌ Mégse", key="cat_del_no"):
             st.session_state["cat_delete_confirm"] = False
             st.rerun()
+
+    st.sidebar.write("---")
+
+    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT, TÖRLÉS ALATT) ---
+    st.sidebar.header("🔀 Fülek sorrendje")
+    st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
+
+    # Beépített stílus szótár, ami a gombok hátterét sötétszürkévé teszi, eltüntetve a piros színt
+    custom_styles = {
+        "backgroundColor": "#262730",
+        "color": "#FFFFFF",
+        "border": "1px solid #464855",
+        "borderRadius": "4px",
+        "padding": "8px 12px",
+        "margin": "4px 0px"
+    }
+
+    with st.sidebar:
+        sorted_categories = sort_items(
+            st.session_state["current_order"], 
+            direction="vertical", 
+            key="sidebar_sortable_panel_fixed",
+            container_styles=custom_styles
+        )
+    
+    if sorted_categories != st.session_state["current_order"]:
+        st.session_state["current_order"] = sorted_categories
+        st.rerun()
+
+    categories = st.session_state["current_order"]
 
     # --- FELTÖLTÉS SECTION (NAGY FÁJL TÁMOGATÁSSAL) ---
     st.write("---")
