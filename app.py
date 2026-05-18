@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import base64
-import urllib.parse
+from pdf2image import convert_from_bytes
 
 # Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="centered")
@@ -208,62 +208,43 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ INTEGRÁLT INTELLIGENS ELŐNÉZET ---
+            # --- 👁️ HELYI KÉPMOTOR ALAPÚ ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    # 1. PDF-EK KIVÁLÓAN MŰKÖDNEK HELYBEN A GOOGLE-AL
-                    if filename_lower.endswith('.pdf'):
-                        with st.spinner("PDF előkészítése..."):
-                            meta_res = requests.get(file_api_url, headers=headers)
-                            if meta_res.status_code == 200:
-                                download_url = meta_res.json().get("download_url")
-                                encoded_url = urllib.parse.quote(download_url)
-                                google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
-                                st.markdown(f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>', unsafe_allow_html=True)
+                    with St.spinner("Fájl beolvasása és biztonságos feldolgozása..."):
+                        file_res = requests.get(file_api_url, headers=raw_headers)
+                        
+                        if file_res.status_code == 200:
+                            raw_bytes = file_res.content
+                            
+                            # RENDKÍVÜL BIZTONSÁGOS PDF/DOKUMENTUM MEGJELENÍTŐ (KÉPEKKÉ ALAKÍTVA)
+                            if filename_lower.endswith('.pdf'):
+                                try:
+                                    # A PDF lapjait nagy felbontású képekké alakítjuk a memóriában
+                                    images = convert_from_bytes(raw_bytes)
+                                    
+                                    st.success(f"📖 Sikeresen betöltve: {len(images)} oldal")
+                                    
+                                    # Kilistázzuk a lapokat egymás alá, mint egy rendes olvasóban
+                                    for i, img in enumerate(images):
+                                        st.caption(f"{i+1}. Oldal")
+                                        st.image(img, use_container_width=True)
+                                except Exception as e:
+                                    st.error("Nem sikerült képekké alakítani a PDF-et. Ellenőrizd a requirements.txt meglétét!")
+                            
+                            # KÉPEK, VIDEÓK, HANGOK NATÍV KEZELÉSE
+                            elif filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                st.image(raw_bytes, use_container_width=True)
+                            elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                st.video(raw_bytes)
+                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                st.audio(raw_bytes)
                             else:
-                                st.error("Hiba a fájl elérésekor.")
-
-                    # 2. MICROSOFT OFFICE FÁJLOK (WORD, EXCEL, PPT) -> 100%-OS EREDETI DIZÁJNÚ ÚJ LAPOS MEGJELENÍTÉS
-                    elif filename_lower.endswith(('.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt')):
-                        with st.spinner("Biztonságos megtekintő kapcsolat létrehozása..."):
-                            meta_res = requests.get(file_api_url, headers=headers)
-                            if meta_res.status_code == 200:
-                                download_url = meta_res.json().get("download_url")
-                                encoded_url = urllib.parse.quote(download_url)
-                                
-                                # A Microsoft hivatalos Office Web Viewer motorját hívjuk meg!
-                                # Ez megőrzi a 2016-os PowerPoint háttereit, elrendezéseit és animációit is!
-                                microsoft_viewer_url = f"https://view.officeapps.live.com/op/view.aspx?src={encoded_url}"
-                                
-                                st.info("💡 A tökéletes dizájn és a háttér megőrzése érdekében ezt a dokumentumot a hivatalos Microsoft Office Online olvasóval nyitjuk meg.")
-                                st.markdown(
-                                    f'<a href="{microsoft_viewer_url}" target="_blank" style="text-decoration: none;">'
-                                    f'<div style="padding: 12px; background-color: #D83B01; color: white; '
-                                    f'text-align: center; border-radius: 6px; font-weight: bold; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
-                                    f'📊 Prezentáció/Dokumentum megnyitása eredeti formátumban (új lapon)'
-                                    f'</div></a>', 
-                                    unsafe_allow_html=True
-                                )
-                                st.caption("Kattints a fenti narancssárga gombra. Nem fog letöltődni a fájl, hanem egy tiszta lapon, gyönyörűen, háttérrel együtt megjelenik.")
-                            else:
-                                st.error("Nem sikerült lekérni a fájl adatait.")
-                                
-                    # 3. KÉPEK, VIDEÓK, HANGOK HELYBEN
-                    else:
-                        with st.spinner("Betöltés..."):
-                            file_res = requests.get(file_api_url, headers=raw_headers)
-                            if file_res.status_code == 200:
-                                raw_bytes = file_res.content
-                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                    st.image(raw_bytes, use_container_width=True)
-                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                    st.video(raw_bytes)
-                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                    st.audio(raw_bytes)
-                            else:
-                                st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
+                                st.warning("Ehhez a fájltípushoz nincs közvetlen online előnézet. Használd a letöltés gombot!")
+                        else:
+                            st.error("Nem sikerült letölteni a fájlt a GitHub tárhelyről.")
 
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
