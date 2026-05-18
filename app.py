@@ -4,40 +4,9 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
-from streamlit_sortables import sort_items
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
-
-# --- 🚀 JAVASCRIPTALAPÚ MÁGIKUS ÁTSZÍNEZŐ (NINCS TÖBB PYTHON HIBA) ---
-# Mivel a Python paraméterekre összeomlik a komponens, ez a JS kód a háttérben 
-# megkeresi az iFrame-en belüli piros kártyákat, és átfesti őket az app sötét szürke színére.
-st.components.v1.html(
-    """
-    <script>
-    function colorizeCards() {
-        // Megkeressük az összes drag-and-drop kártyát a képernyőn
-        const cards = window.parent.document.querySelectorAll('div[draggable="true"]');
-        cards.forEach(card => {
-            // Ráerőltetjük a letisztult sötét dizájnt a beégetett piros helyett
-            card.style.setProperty('background-color', '#262730', 'important');
-            card.style.setProperty('background', '#262730', 'important');
-            card.style.setProperty('color', '#ffffff', 'important');
-            card.style.setProperty('border', '1px solid #464855', 'important');
-            card.style.setProperty('border-radius', '6px', 'important');
-            
-            // Biztosítjuk, hogy a belső szöveg is fehér legyen
-            const texts = card.querySelectorAll('*');
-            texts.forEach(t => t.style.setProperty('color', '#ffffff', 'important'));
-        });
-    }
-    
-    // Folyamatosan figyeljük és frissítjük a színeket, ha a felhasználó húzgálja őket
-    setInterval(colorizeCards, 100);
-    </script>
-    """,
-    height=0, # Teljesen láthatatlan marad a felületen
-)
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -137,18 +106,26 @@ if check_password():
 
     st.sidebar.write("---")
 
-    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT) ---
+    # --- 🔀 2. FÜLEK SORRENDJE (NATIV SÖTÉTSZÜRKE MEGOLDÁS) ---
     st.sidebar.header("🔀 Fülek sorrendje")
-    st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
+    st.sidebar.caption("Kattints a kategóriák melletti 'x'-re a kivételhez, vagy válaszd ki őket a kívánt sorrendben:")
 
-    # Tisztán, gyári paraméterekkel hívjuk meg, a JavaScript végzi el a színezést!
-    with st.sidebar:
-        sorted_categories = sort_items(
-            st.session_state["current_order"], 
-            direction="vertical", 
-            key="sidebar_sortable_clean"
-        )
+    # Biztosítjuk, hogy a session_state szinkronban legyen a listával
+    current_list = st.session_state["current_order"]
     
+    # Egy natív, gyönyörű sötét multiselect doboz, ami nem tud piros lenni
+    sorted_categories = st.sidebar.multiselect(
+        label="Rendezd a mappákat:",
+        options=detected_categories,
+        default=current_list,
+        label_visibility="collapsed"
+    )
+
+    # Ha a felhasználó teljesen kiürítené, tartsuk meg az alapértelmezettet, hogy ne crasheljen az app
+    if not sorted_categories:
+        sorted_categories = detected_categories
+
+    # Ha változott a sorrend, elmentjük és frissítjük az oldalt
     if sorted_categories != st.session_state["current_order"]:
         st.session_state["current_order"] = sorted_categories
         st.rerun()
