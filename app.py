@@ -4,35 +4,41 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
-from streamlit_sortables import sort_items  # Drag-and-drop komponens
+from streamlit_sortables import sort_items
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
-# --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
-# Ez a CSS kód közvetlenül a böngészőben formázza át a rendezőkártyákat:
-# Eltünteti a pirosat, sötétszürkévé teszi, és rákényszeríti a Sidebar szélességét.
+# --- 🎨 A PIROS KÁRTYÁK ÁTSZÍNEZÉSE SÖTÉTSZÜRKÉRE ---
+# Ez a CSS kód közvetlenül a HTML struktúrában keresi meg a rendező elemeit,
+# és teljesen felülírja a piros hátteret az app sötét stílusára.
 st.markdown(
     """
     <style>
-    /* Kényszerítjük a komponenst, hogy ne nyúljon túl az oldalsávon */
-    [data-testid="stSidebar"] iframe {
-        width: 100% !important;
-    }
-    /* A rendező kártyák egyedi sötét stílusa */
-    div[draggable="true"] {
+    /* 1. Az összes drag-and-drop elem alap stílusa (Hátterek sötétszürkére állítása) */
+    div[draggable="true"], 
+    .sortable-item, 
+    [class*="sortable"] > div > div {
         background-color: #262730 !important;
+        background: #262730 !important;
         color: #ffffff !important;
         border: 1px solid #464855 !important;
-        border-radius: 4px !important;
-        padding: 8px 12px !important;
-        margin-bottom: 6px !important;
+        border-radius: 6px !important;
         box-shadow: none !important;
     }
-    /* Hover (egér ráhúzás) effektus */
-    div[draggable="true"]:hover {
+    
+    /* 2. Biztosítjuk, hogy a szövegek színe fehér maradjon a sötét háttéren */
+    div[draggable="true"] *, 
+    .sortable-item * {
+        color: #ffffff !important;
+    }
+
+    /* 3. Egér ráhúzáskor (hover) egy picit világosabb szürkét kapjon */
+    div[draggable="true"]:hover, 
+    .sortable-item:hover {
         background-color: #31333F !important;
-        border-color: #ff4b4b !important;
+        background: #31333F !important;
+        border-color: #555867 !important;
     }
     </style>
     """,
@@ -137,7 +143,7 @@ if check_password():
 
     st.sidebar.write("---")
 
-    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT - PONTOSAN A TÖRLES ALATT) ---
+    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT) ---
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
@@ -145,7 +151,7 @@ if check_password():
         sorted_categories = sort_items(
             st.session_state["current_order"], 
             direction="vertical", 
-            key="sidebar_sortable_clean_v3"
+            key="sidebar_sortable_v5"
         )
     
     if sorted_categories != st.session_state["current_order"]:
@@ -154,7 +160,7 @@ if check_password():
 
     categories = st.session_state["current_order"]
 
-    # --- FELTÖLTÉS SECTION (NAGY FÁJL TÁMOGATÁSSAL) ---
+    # --- FELTÖLTÉS SECTION ---
     st.write("---")
     st.subheader("📤 Új fájl feltöltése")
     target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
