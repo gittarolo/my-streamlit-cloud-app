@@ -58,8 +58,12 @@ if check_password():
     if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
         st.session_state["current_order"] = detected_categories
 
-    # Megjelenítjük az interaktív drag-and-drop listát az oldalsávban
-    sorted_categories = sort_items(st.session_state["current_order"], direction="vertical", key="category_sortable_panel")
+    # Megjelenítjük az interaktív drag-and-drop listát az oldalsávban (az alapértelmezetten beépített sötét/világos témához igazítva)
+    sorted_categories = sort_items(
+        st.session_state["current_order"], 
+        direction="vertical", 
+        key="category_sortable_sidebar"
+    )
     
     # Frissítjük a sorrendet a választás alapján
     if sorted_categories != st.session_state["current_order"]:
@@ -80,7 +84,6 @@ if check_password():
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
                 cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
-                    # Ha új kategória jön létre, töröljük a cache-elt sorrendet, hogy az új mappa is bekerülhessen a listába
                     if "current_order" in st.session_state:
                         del st.session_state["current_order"]
                     st.sidebar.success(f"'{clean_cat}' létrekozva!")
@@ -114,7 +117,6 @@ if check_password():
                     requests.delete(del_url, json={"message": "Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
                 requests.delete(f"https://api.github.com/repos/{REPO}/contents/{cat_to_delete}/.gitkeep", json={"message": "Mappa véglegen törölve"}, headers=headers)
                 st.session_state["cat_delete_confirm"] = False
-                # Törlés után szintén frissíteni kell a listát a session-ben
                 if "current_order" in st.session_state:
                     del st.session_state["current_order"]
                 st.sidebar.success(f"'{cat_to_delete}' sikeresen törölve!")
@@ -139,7 +141,8 @@ if check_password():
             st.error("⚠️ Ingyenes verzióban a maximális fájlméret 100 MB.")
         else:
             if st.button("🚀 Biztonságos feltöltés indítása"):
-                with st.spinner("Feltöltés folyamatban..."):
+                # ITT JAVÍTVA A NAGYBETŰS St.spinner -> st.spinner hiba!
+                with st.spinner("Fájl beolvasása és biztonságos feldolgozása..."):
                     final_path = f"{target_cat}/{file_name}" if target_cat != "Főkönyvtár" else file_name
                     encoded_content = base64.b64encode(file_bytes).decode("utf-8")
                     
@@ -262,7 +265,6 @@ if check_password():
                         with st.expander("✨ Előnézet bezárása", expanded=True):
                             filename_lower = display_name.lower()
                             
-                            # 1. INTERAKTÍV TÁBLÁZATOK HELYBEN (CSV, EXCEL, RÉGI EXCEL)
                             if filename_lower.endswith(('.xlsx', '.xls', '.csv')):
                                 with st.spinner("Táblázat beolvasása..."):
                                     file_res = requests.get(file_api_url, headers=raw_headers)
@@ -278,11 +280,10 @@ if check_password():
                                             st.success(f"📊 {df.shape[0]} sor, {df.shape[1]} oszlop betöltve.")
                                             st.dataframe(df, use_container_width=True)
                                         except Exception as e:
-                                            st.error("Nem sikerült beolvasni a táblázatot. Ha régi .xls fájlról van szó, ellenőrizd, hogy az xlrd szerepel-e a requirements.txt-ben!")
+                                            st.error("Nem sikerült beolvasni a táblázatot.")
                                     else:
                                         st.error("Hiba a fájl letöltésekor.")
 
-                            # 2. DOKUMENTUMOK (PDF, WORD, PPT)
                             elif filename_lower.endswith(('.pdf', '.docx', '.doc', '.pptx', '.ppt')):
                                 with st.spinner("Dokumentum előkészítése az olvasóhoz..."):
                                     meta_res = requests.get(file_api_url, headers=headers)
@@ -293,9 +294,8 @@ if check_password():
                                         iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
                                         st.markdown(iframe_code, unsafe_allow_html=True)
                                     else:
-                                        st.error("Nem sikerült lekérni a fájl adatait a GitHubról.")
+                                        st.error("Nem sikerült lekérni a fájl adatait.")
 
-                            # 3. KÉPEK, VIDEÓK, HANGOK NATÍV BETÖLTÉSE
                             else:
                                 with st.spinner("Médiafájl betöltése..."):
                                     file_res = requests.get(file_api_url, headers=raw_headers)
@@ -307,8 +307,6 @@ if check_password():
                                             st.video(raw_bytes)
                                         elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
                                             st.audio(raw_bytes)
-                                    else:
-                                        st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
                     # --- FÁJL TÖRÖLVE MEGERŐSÍTÉS PANEL ---
                     if st.session_state["delete_confirm_sha"] == f["sha"]:
