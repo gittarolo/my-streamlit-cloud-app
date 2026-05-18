@@ -207,48 +207,41 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET (HILÁTLAN, HIVATALOS GITHUB API LETÖLTŐ LINKKEL) ---
+            # --- 👁️ AKTÍV ELŐNÉZET (HELYI BIZTONSÁGOS HTML MEGJELENÍTÉSSEL) ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    if filename_lower.endswith('.pdf'):
-                        with st.spinner("Biztonságos megtekintő link lekérése..."):
-                            # Lekérjük a fájl metaadatait az API-tól
-                            meta_res = requests.get(file_api_url, headers=headers)
-                            
-                            if meta_res.status_code == 200:
-                                # Ez a gomb most már a hivatalos GitHub download_url-t kapja meg
-                                # ami tartalmazza a hitelesítést és nem téved el ékezetek/szóközök miatt sem!
-                                download_url = meta_res.json().get("download_url")
-                                
-                                st.success("🎯 Biztonságos kapcsolat felépítve!")
-                                st.markdown(
-                                    f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
-                                    f'<div style="padding: 12px; background-color: #FF4B4B; color: white; '
-                                    f'text-align: center; border-radius: 6px; font-weight: bold; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
-                                    f'📖 PDF megnyitása azonnal (új lapon)'
-                                    f'</div></a>', 
-                                    unsafe_allow_html=True
-                                )
-                                st.caption("Kattints a fenti piros gombra. A PDF azonnal, hibák nélkül be fog tölteni a böngésződben.")
-                            else:
-                                st.error("Nem sikerült elérni a fájlt a GitHubon.")
+                    with st.spinner("Fájl beolvasása előnézethez..."):
+                        file_res = requests.get(file_api_url, headers=raw_headers)
                         
-                    else:
-                        # Képek, videók maradtak a régiek
-                        with st.spinner("Betöltés..."):
-                            file_res = requests.get(file_api_url, headers=raw_headers)
-                            if file_res.status_code == 200:
-                                raw_bytes = file_res.content
-                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                    st.image(raw_bytes, use_container_width=True)
-                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                    st.video(raw_bytes)
-                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                    st.audio(raw_bytes)
+                        if file_res.status_code == 200:
+                            raw_bytes = file_res.content
+                            
+                            # --- ÚJ, GOLYÓÁLLÓ PDF MEGJELENÍTÉS HELYBEN ---
+                            if filename_lower.endswith('.pdf'):
+                                base64_pdf = base64.b64encode(raw_bytes).decode('utf-8')
+                                # Beágyazzuk közvetlenül adatként, így nem külső link és kötelezően megjeleníti a Chrome!
+                                pdf_data_stream = f"data:application/pdf;base64,{base64_pdf}"
+                                
+                                # Egy modern HTML5 objektumot használunk iframe helyett, ami sokkal stabilabb PDF-re
+                                pdf_html = f'''
+                                <object data="{pdf_data_stream}" type="application/pdf" width="100%" height="700px">
+                                    <embed src="{pdf_data_stream}" type="application/pdf" />
+                                </object>
+                                '''
+                                st.markdown(pdf_html, unsafe_allow_html=True)
+                                
+                            elif filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                st.image(raw_bytes, use_container_width=True)
+                            elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                st.video(raw_bytes)
+                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                st.audio(raw_bytes)
                             else:
                                 st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
+                        else:
+                            st.error("Nem sikerült letölteni a fájlt a beolvasáshoz.")
 
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
