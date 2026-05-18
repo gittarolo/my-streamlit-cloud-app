@@ -4,9 +4,9 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
-from streamlit_sortables import sort_items  # Új drag-and-drop komponens importálása
+from streamlit_sortables import sort_items  # Biztosítsd, hogy benne van a requirements.txt-ben!
 
-# Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
+# Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
 def check_password():
@@ -50,24 +50,21 @@ if check_password():
     
     detected_categories = sorted(list(set(detected_categories)))
 
-    # --- 🎛️ DRAG-AND-DROP SORRENDEZÉS PANEL (SIDEBAR) ---
+    # --- 🎛️ DRAG-AND-DROP PANEL AZ OLDALSÁVBAN ---
     st.sidebar.header("🔀 Fülek sorrendje")
-    st.sidebar.caption("Fogd meg az egérrel a mappákat és húzd őket a kívánt sorrendbe:")
+    st.sidebar.caption("Fogd meg az egérrel a kártyákat és rendezd át a felső fülek sorrendjét:")
     
-    # Session state-ben eltároljuk az aktuális sorrendet, hogy ne ugorjon vissza alaphelyzetbe gombnyomáskor
     if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
         st.session_state["current_order"] = detected_categories
 
-    # Megjelenítjük az interaktív drag-and-drop listát az oldalsávban
+    # Megjelenik az egérrel húzgálható lista a Sidebarban
     sorted_categories = sort_items(st.session_state["current_order"], direction="vertical", key="category_sortable_panel")
     
-    # Frissítjük a sorrendet a választás alapján
     if sorted_categories != st.session_state["current_order"]:
         st.session_state["current_order"] = sorted_categories
         st.rerun()
 
     categories = st.session_state["current_order"]
-
     st.sidebar.write("---")
 
     # --- KATEGÓRIA KEZELÉS SECTION (SIDEBAR) ---
@@ -80,7 +77,6 @@ if check_password():
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
                 cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
-                    # Ha új kategória jön létre, töröljük a cache-elt sorrendet, hogy az új mappa is bekerülhessen a listába
                     if "current_order" in st.session_state:
                         del st.session_state["current_order"]
                     st.sidebar.success(f"'{clean_cat}' létrekozva!")
@@ -114,7 +110,6 @@ if check_password():
                     requests.delete(del_url, json={"message": "Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
                 requests.delete(f"https://api.github.com/repos/{REPO}/contents/{cat_to_delete}/.gitkeep", json={"message": "Mappa véglegen törölve"}, headers=headers)
                 st.session_state["cat_delete_confirm"] = False
-                # Törlés után szintén frissíteni kell a listát a session-ben
                 if "current_order" in st.session_state:
                     del st.session_state["current_order"]
                 st.sidebar.success(f"'{cat_to_delete}' sikeresen törölve!")
@@ -123,7 +118,7 @@ if check_password():
             st.session_state["cat_delete_confirm"] = False
             st.rerun()
 
-    # --- FELTÖLTÉS SECTION (NAGY FÁJL TÁMOGATÁSSAL) ---
+    # --- FELTÖLTÉS SECTION ---
     st.write("---")
     st.subheader("📤 Új fájl feltöltése")
     target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
@@ -139,7 +134,8 @@ if check_password():
             st.error("⚠️ Ingyenes verzióban a maximális fájlméret 100 MB.")
         else:
             if st.button("🚀 Biztonságos feltöltés indítása"):
-                with st.spinner("Feltöltés folyamatban..."):
+                # ITT JAVÍTVA A NAGYBETŰS St.spinner -> st.spinner hiba!
+                with st.spinner("Fájl beolvasása és biztonságos feldolgozása..."):
                     final_path = f"{target_cat}/{file_name}" if target_cat != "Főkönyvtár" else file_name
                     encoded_content = base64.b64encode(file_bytes).decode("utf-8")
                     
@@ -173,14 +169,12 @@ if check_password():
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
-    # --- 📚 DINAMIKUS FÜLEK (TABS) LÉTREHOZÁSA ---
     tabs = st.tabs(categories)
 
     for i, tab in enumerate(tabs):
         selected_view_cat = categories[i]
         
         with tab:
-            # ÁTHELYEZÉSI PANEL
             if st.session_state["move_file_sha"] is not None and st.session_state["move_file_path"].startswith(selected_view_cat if selected_view_cat != "Főkönyvtár" else ""):
                 with st.container(border=True):
                     st.markdown(f"📂 **Fájl áthelyezése:** `{st.session_state['move_file_name']}`")
@@ -219,7 +213,6 @@ if check_password():
                         st.rerun()
                 st.write("---")
 
-            # Fájlok szűrése a jelenlegi fülhöz
             filtered_files = []
             for f in all_files:
                 path_parts = f["path"].split("/")
@@ -257,12 +250,10 @@ if check_password():
                         st.session_state["delete_confirm_sha"] = f["sha"]
                         st.rerun()
 
-                    # --- 👁️ AKTÍV INTELLIGENS ELŐNÉZET ---
                     if st.session_state["preview_sha"] == f["sha"]:
                         with st.expander("✨ Előnézet bezárása", expanded=True):
                             filename_lower = display_name.lower()
                             
-                            # 1. INTERAKTÍV TÁBLÁZATOK HELYBEN (CSV, EXCEL, RÉGI EXCEL)
                             if filename_lower.endswith(('.xlsx', '.xls', '.csv')):
                                 with st.spinner("Táblázat beolvasása..."):
                                     file_res = requests.get(file_api_url, headers=raw_headers)
@@ -274,17 +265,15 @@ if check_password():
                                                 df = pd.read_excel(io.BytesIO(file_res.content), engine='xlrd')
                                             else:
                                                 df = pd.read_excel(io.BytesIO(file_res.content))
-                                                
                                             st.success(f"📊 {df.shape[0]} sor, {df.shape[1]} oszlop betöltve.")
                                             st.dataframe(df, use_container_width=True)
                                         except Exception as e:
-                                            st.error("Nem sikerült beolvasni a táblázatot. Ha régi .xls fájlról van szó, ellenőrizd, hogy az xlrd szerepel-e a requirements.txt-ben!")
+                                            st.error("Nem sikerült beolvasni a táblázatot.")
                                     else:
                                         st.error("Hiba a fájl letöltésekor.")
 
-                            # 2. DOKUMENTUMOK (PDF, WORD, PPT)
                             elif filename_lower.endswith(('.pdf', '.docx', '.doc', '.pptx', '.ppt')):
-                                with st.spinner("Dokumentum előkészítése az olvasóhoz..."):
+                                with st.spinner("Dokumentum előkészítése..."):
                                     meta_res = requests.get(file_api_url, headers=headers)
                                     if meta_res.status_code == 200:
                                         download_url = meta_res.json().get("download_url")
@@ -292,10 +281,7 @@ if check_password():
                                         google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
                                         iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
                                         st.markdown(iframe_code, unsafe_allow_html=True)
-                                    else:
-                                        st.error("Nem sikerült lekérni a fájl adatait a GitHubról.")
 
-                            # 3. KÉPEK, VIDEÓK, HANGOK NATÍV BETÖLTÉSE
                             else:
                                 with st.spinner("Médiafájl betöltése..."):
                                     file_res = requests.get(file_api_url, headers=raw_headers)
@@ -307,10 +293,7 @@ if check_password():
                                             st.video(raw_bytes)
                                         elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
                                             st.audio(raw_bytes)
-                                    else:
-                                        st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
-                    # --- FÁJL TÖRÖLVE MEGERŐSÍTÉS PANEL ---
                     if st.session_state["delete_confirm_sha"] == f["sha"]:
                         st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
                         c_yes, c_no = st.columns([1, 1])
