@@ -9,32 +9,48 @@ from streamlit_sortables import sort_items  # Drag-and-drop komponens
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
-# --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
-# Ez a CSS kód közvetlenül a böngészőben formázza át a rendezőkártyákat:
-# Eltünteti a pirosat, sötétszürkévé teszi, és rákényszeríti a Sidebar szélességét.
+# --- 🎨 RADIKÁLIS DESIGN JAVÍTÁS (DRAG-AND-DROP KÁRTYÁK ÁTSZÍNEZÉSE) ---
+# Mivel a sortables egy zárt iFrame-ben él, ez a speciális script utánamegy a háttérben,
+# és közvetlenül a komponens gyökerénél törli el a piros színt, sötétszürkére cserélve azt.
 st.markdown(
     """
     <style>
-    /* Kényszerítjük a komponenst, hogy ne nyúljon túl az oldalsávon */
+    /* Először a külső tárolót igazítjuk a Sidebar szélességéhez */
     [data-testid="stSidebar"] iframe {
         width: 100% !important;
     }
-    /* A rendező kártyák egyedi sötét stílusa */
-    div[draggable="true"] {
-        background-color: #262730 !important;
-        color: #ffffff !important;
-        border: 1px solid #464855 !important;
-        border-radius: 4px !important;
-        padding: 8px 12px !important;
-        margin-bottom: 6px !important;
-        box-shadow: none !important;
-    }
-    /* Hover (egér ráhúzás) effektus */
-    div[draggable="true"]:hover {
-        background-color: #31333F !important;
-        border-color: #ff4b4b !important;
-    }
     </style>
+    <script>
+    // Megvárjuk, amíg a Streamlit teljesen felépíti az iFrame-et, és befecskendezzük a stílust
+    const SCRIPT_ID = 'sortable-fixer-script';
+    if (!document.getElementById(SCRIPT_ID)) {
+        const script = document.createElement('script');
+        script.id = SCRIPT_ID;
+        script.innerText = `
+            setInterval(() => {
+                const iframes = document.querySelectorAll('iframe');
+                iframes.forEach(iframe => {
+                    try {
+                        const doc = iframe.contentDocument || iframe.contentWindow.document;
+                        // Megkeressük a drag-and-drop elemeket az iFrame-en belül
+                        const items = doc.querySelectorAll('div[draggable="true"], .sortable-item, [class*="item"]');
+                        items.forEach(item => {
+                            // Környezetbe illő sötét háttér, fehér szöveg és finom szürke keret kényszerítése
+                            item.style.setProperty('background-color', '#262730', 'important');
+                            item.style.setProperty('color', '#ffffff', 'important');
+                            item.style.setProperty('border', '1px solid #464855', 'important');
+                            item.style.setProperty('background', '#262730', 'important');
+                            item.style.setProperty('box-shadow', 'none', 'important');
+                        });
+                    } catch(e) {
+                        // Időnként a böngésző cross-origin hibát dobhat, ha még nem töltött be, ezt csendben kezeljük
+                    }
+                });
+            }, 300);
+        `;
+        document.body.appendChild(script);
+    }
+    </script>
     """,
     unsafe_allow_html=True
 )
@@ -137,7 +153,7 @@ if check_password():
 
     st.sidebar.write("---")
 
-    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT - PONTOSAN A TÖRLES ALATT) ---
+    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT - A TÖRLES ALATT) ---
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
@@ -145,7 +161,7 @@ if check_password():
         sorted_categories = sort_items(
             st.session_state["current_order"], 
             direction="vertical", 
-            key="sidebar_sortable_clean_v3"
+            key="sidebar_sortable_clean_v4"
         )
     
     if sorted_categories != st.session_state["current_order"]:
