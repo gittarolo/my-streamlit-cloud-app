@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import base64
+import urllib.parse
 
 # Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="centered")
@@ -207,41 +208,42 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET (HELYI BIZTONSÁGOS HTML MEGJELENÍTÉSSEL) ---
+            # --- 👁️ AKTÍV ELŐNÉZET (VÉGLEGES, SZIGORÚ CSP BIZTOS JAVÍTÁSSAL) ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    with st.spinner("Fájl beolvasása előnézethez..."):
-                        file_res = requests.get(file_api_url, headers=raw_headers)
-                        
-                        if file_res.status_code == 200:
-                            raw_bytes = file_res.content
-                            
-                            # --- ÚJ, GOLYÓÁLLÓ PDF MEGJELENÍTÉS HELYBEN ---
-                            if filename_lower.endswith('.pdf'):
-                                base64_pdf = base64.b64encode(raw_bytes).decode('utf-8')
-                                # Beágyazzuk közvetlenül adatként, így nem külső link és kötelezően megjeleníti a Chrome!
-                                pdf_data_stream = f"data:application/pdf;base64,{base64_pdf}"
+                    # Ha PDF, akkor egy hivatalos külső renderelőt használunk, ami be tud tölteni privát streamet is
+                    if filename_lower.endswith('.pdf'):
+                        with st.spinner("PDF előkészítése..."):
+                            meta_res = requests.get(file_api_url, headers=headers)
+                            if meta_res.status_code == 200:
+                                download_url = meta_res.json().get("download_url")
                                 
-                                # Egy modern HTML5 objektumot használunk iframe helyett, ami sokkal stabilabb PDF-re
-                                pdf_html = f'''
-                                <object data="{pdf_data_stream}" type="application/pdf" width="100%" height="700px">
-                                    <embed src="{pdf_data_stream}" type="application/pdf" />
-                                </object>
-                                '''
-                                st.markdown(pdf_html, unsafe_allow_html=True)
+                                # A trükk: a Google hivatalos beágyazott dokumentum-megtekintőjét használjuk,
+                                # ami teljesen immunis a Streamlit szerver szigorú CSP letiltásaira!
+                                encoded_url = urllib.parse.quote(download_url)
+                                google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
                                 
-                            elif filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                st.image(raw_bytes, use_container_width=True)
-                            elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                st.video(raw_bytes)
-                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                st.audio(raw_bytes)
+                                iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
+                                st.markdown(iframe_code, unsafe_allow_html=True)
+                            else:
+                                st.error("Nem sikerült lekérni a PDF adatait.")
+                                
+                    else:
+                        # Képek, hangok, videók betöltése helyben
+                        with st.spinner("Betöltés..."):
+                            file_res = requests.get(file_api_url, headers=raw_headers)
+                            if file_res.status_code == 200:
+                                raw_bytes = file_res.content
+                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                    st.image(raw_bytes, use_container_width=True)
+                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                    st.video(raw_bytes)
+                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                    st.audio(raw_bytes)
                             else:
                                 st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
-                        else:
-                            st.error("Nem sikerült letölteni a fájlt a beolvasáshoz.")
 
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
