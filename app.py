@@ -208,32 +208,50 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET ---
+            # --- 👁️ INTEGRÁLT INTELLIGENS ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    # Definiáljuk a támogatott irodai kiterjesztéseket
-                    office_extensions = ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt')
-                    
-                    # --- DOKUMENTUMOK (PDF + WORD + EXCEL + PPT) ONLINE MEGJELENÍTÉSE ---
-                    if filename_lower.endswith(office_extensions):
-                        with st.spinner("Dokumentum előkészítése az olvasóhoz..."):
+                    # 1. PDF-EK KIVÁLÓAN MŰKÖDNEK HELYBEN A GOOGLE-AL
+                    if filename_lower.endswith('.pdf'):
+                        with st.spinner("PDF előkészítése..."):
                             meta_res = requests.get(file_api_url, headers=headers)
                             if meta_res.status_code == 200:
                                 download_url = meta_res.json().get("download_url")
-                                
-                                # Google Docs Viewer beágyazás szóköz-biztos kódolással
                                 encoded_url = urllib.parse.quote(download_url)
                                 google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
-                                
-                                iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
-                                st.markdown(iframe_code, unsafe_allow_html=True)
+                                st.markdown(f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>', unsafe_allow_html=True)
                             else:
-                                st.error("Nem sikerült lekérni a fájl adatait a GitHubról.")
+                                st.error("Hiba a fájl elérésekor.")
+
+                    # 2. MICROSOFT OFFICE FÁJLOK (WORD, EXCEL, PPT) -> 100%-OS EREDETI DIZÁJNÚ ÚJ LAPOS MEGJELENÍTÉS
+                    elif filename_lower.endswith(('.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt')):
+                        with st.spinner("Biztonságos megtekintő kapcsolat létrehozása..."):
+                            meta_res = requests.get(file_api_url, headers=headers)
+                            if meta_res.status_code == 200:
+                                download_url = meta_res.json().get("download_url")
+                                encoded_url = urllib.parse.quote(download_url)
                                 
+                                # A Microsoft hivatalos Office Web Viewer motorját hívjuk meg!
+                                # Ez megőrzi a 2016-os PowerPoint háttereit, elrendezéseit és animációit is!
+                                microsoft_viewer_url = f"https://view.officeapps.live.com/op/view.aspx?src={encoded_url}"
+                                
+                                st.info("💡 A tökéletes dizájn és a háttér megőrzése érdekében ezt a dokumentumot a hivatalos Microsoft Office Online olvasóval nyitjuk meg.")
+                                st.markdown(
+                                    f'<a href="{microsoft_viewer_url}" target="_blank" style="text-decoration: none;">'
+                                    f'<div style="padding: 12px; background-color: #D83B01; color: white; '
+                                    f'text-align: center; border-radius: 6px; font-weight: bold; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
+                                    f'📊 Prezentáció/Dokumentum megnyitása eredeti formátumban (új lapon)'
+                                    f'</div></a>', 
+                                    unsafe_allow_html=True
+                                )
+                                st.caption("Kattints a fenti narancssárga gombra. Nem fog letöltődni a fájl, hanem egy tiszta lapon, gyönyörűen, háttérrel együtt megjelenik.")
+                            else:
+                                st.error("Nem sikerült lekérni a fájl adatait.")
+                                
+                    # 3. KÉPEK, VIDEÓK, HANGOK HELYBEN
                     else:
-                        # Képek, hangok, videók betöltése változatlanul helyben
                         with st.spinner("Betöltés..."):
                             file_res = requests.get(file_api_url, headers=raw_headers)
                             if file_res.status_code == 200:
