@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import base64
+import urllib.parse
 
 # Oldal alapbeállításai
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="centered")
@@ -54,7 +55,7 @@ if check_password():
             clean_cat = new_cat.strip().replace("/", "_")
             with st.spinner("Kategória létrehozása..."):
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
-                cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
+                cat_res = requests.put(url, json={"message": f"Kategória létrehozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
                     st.sidebar.success(f"'{clean_cat}' létrehozva!")
                     st.rerun()
@@ -93,47 +94,31 @@ if check_password():
             st.session_state["cat_delete_confirm"] = False
             st.rerun()
 
-    # --- FELTÖLTÉS SECTION (ÓRIÁS FÁJL TÁMOGATÁSSAL) ---
+    # --- FELTÖLTÉS SECTION ---
     st.write("---")
     st.subheader("📤 Új fájl feltöltése")
     target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
-    uploaded_file = st.file_uploader("Válassz ki egy fájlt:", type=None)
+    uploaded_file = st.file_uploader("Válassz ki egy fájlt:")
     
     if uploaded_file is not None:
         file_name = uploaded_file.name
-        file_bytes = uploaded_file.read()
-        file_size_mb = len(file_bytes) / (1024 * 1024)
+        file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
         st.write(f"Mért fájlméret: **{file_size_mb:.1f} MB**")
         
-        if file_size_mb > 100.0:
-            st.error("⚠️ Ingyenes verzióban a maximális fájlméret 100 MB.")
+        if file_size_mb > 50.0:
+            st.error(f"⚠️ A GitHub API miatt maximum 50 MB-os fájlt tölthetsz fel így.")
         else:
             if st.button("🚀 Biztonságos feltöltés indítása"):
-                with st.spinner("Feltöltés folyamatban (ez nagyobb fájloknál eltarthat egy kis ideig)..."):
+                with st.spinner("Feltöltés..."):
+                    encoded_content = base64.b64encode(uploaded_file.read()).decode("utf-8")
                     final_path = f"{target_cat}/{file_name}" if target_cat != "Főkönyvtár" else file_name
-                    encoded_content = base64.b64encode(file_bytes).decode("utf-8")
-                    
-                    # Ha a fájl nagyobb mint 40 MB, az óriás fájl (Blob) API-t használjuk
-                    if file_size_mb > 40.0:
-                        blob_url = f"https://api.github.com/repos/{REPO}/git/blobs"
-                        blob_res = requests.post(blob_url, json={"content": encoded_content, "encoding": "base64"}, headers=headers)
-                        
-                        if blob_res.status_code in [200, 201]:
-                            blob_sha = blob_res.json().get("sha")
-                            tree_url = f"https://api.github.com/repos/{REPO}/contents/{final_path}"
-                            res = requests.put(tree_url, json={"message": f"Nagy fájl feltöltve: {final_path}", "sha": blob_sha}, headers=headers)
-                        else:
-                            res = blob_res
-                    else:
-                        # Normál méretű fájl feltöltése
-                        url = f"https://api.github.com/repos/{REPO}/contents/{final_path}"
-                        res = requests.put(url, json={"message": f"Feltöltve: {final_path}", "content": encoded_content}, headers=headers)
-                    
+                    url = f"https://api.github.com/repos/{REPO}/contents/{final_path}"
+                    res = requests.put(url, json={"message": f"Feltöltve ide: {final_path}", "content": encoded_content}, headers=headers)
                     if res.status_code in [200, 201]:
-                        st.success("✨ Sikeres feltöltés!")
+                        st.success("Sikeres feltöltés!")
                         st.rerun()
                     else:
-                        st.error(f"Hiba történt a feltöltésnél. Kód: {res.status_code}")
+                        st.error("Hiba történt a feltöltésnél.")
 
     st.write("---")
 
@@ -223,44 +208,44 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ HELYI INTELLIGENS ELŐNÉZET ---
+            # --- 👁️ AKTÍV ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    with st.spinner("Fájl beolvasása..."):
-                        file_res = requests.get(file_api_url, headers=raw_headers)
-                        
-                        if file_res.status_code == 200:
-                            raw_bytes = file_res.content
-                            
-                            # 1. VIDEÓK KEZELÉSE (.mp4, .mov, stb.) - KÜLÖN, HOGY NE OKOZZON KÉPHIBÁT
-                            if filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                                st.video(raw_bytes)
+                    # Definiáljuk a támogatott irodai kiterjesztéseket
+                    office_extensions = ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt')
+                    
+                    # --- DOKUMENTUMOK (PDF + WORD + EXCEL + PPT) ONLINE MEGJELENÍTÉSE ---
+                    if filename_lower.endswith(office_extensions):
+                        with st.spinner("Dokumentum előkészítése az olvasóhoz..."):
+                            meta_res = requests.get(file_api_url, headers=headers)
+                            if meta_res.status_code == 200:
+                                download_url = meta_res.json().get("download_url")
                                 
-                            # 2. PDF DOKUMENTUMOK KEZELÉSE (KÉPEKKÉ ALAKÍTÁS)
-                            elif filename_lower.endswith('.pdf'):
-                                try:
-                                    from pdf2image import convert_from_bytes
-                                    images = convert_from_bytes(raw_bytes)
-                                    st.success(f"📖 Sikeresen betöltve: {len(images)} oldal")
-                                    for i, img in enumerate(images):
-                                        st.caption(f"{i+1}. Oldal")
-                                        st.image(img, use_container_width=True)
-                                except Exception as e:
-                                    st.error("Hiba a PDF feldolgozásakor. Ellenőrizd, hogy a requirements.txt tartalmazza-e a 'pdf2image'-t!")
-                                    
-                            # 3. NORMÁL KÉPEK KEZELÉSE
-                            elif filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
-                                st.image(raw_bytes, use_container_width=True)
+                                # Google Docs Viewer beágyazás szóköz-biztos kódolással
+                                encoded_url = urllib.parse.quote(download_url)
+                                google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
                                 
-                            # 4. HANGMINDÁK KEZELÉSE
-                            elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                                st.audio(raw_bytes)
+                                iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
+                                st.markdown(iframe_code, unsafe_allow_html=True)
                             else:
-                                st.warning("Ehhez a fájltípushoz nincs közvetlen online előnézet. Töltsd le a megtekintéshez!")
-                        else:
-                            st.error("Nem sikerült letölteni a fájlt a tárhelyről.")
+                                st.error("Nem sikerült lekérni a fájl adatait a GitHubról.")
+                                
+                    else:
+                        # Képek, hangok, videók betöltése változatlanul helyben
+                        with st.spinner("Betöltés..."):
+                            file_res = requests.get(file_api_url, headers=raw_headers)
+                            if file_res.status_code == 200:
+                                raw_bytes = file_res.content
+                                if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                                    st.image(raw_bytes, use_container_width=True)
+                                elif filename_lower.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                    st.video(raw_bytes)
+                                elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                                    st.audio(raw_bytes)
+                            else:
+                                st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
