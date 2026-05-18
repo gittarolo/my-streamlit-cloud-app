@@ -4,9 +4,40 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
+from streamlit_sortables import sort_items  # Drag-and-drop komponens
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
+
+# --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
+# Ez a CSS kód közvetlenül a böngészőben formázza át a rendezőkártyákat:
+# Eltünteti a pirosat, sötétszürkévé teszi, és rákényszeríti a Sidebar szélességét.
+st.markdown(
+    """
+    <style>
+    /* Kényszerítjük a komponenst, hogy ne nyúljon túl az oldalsávon */
+    [data-testid="stSidebar"] iframe {
+        width: 100% !important;
+    }
+    /* A rendező kártyák egyedi sötét stílusa */
+    div[draggable="true"] {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid #464855 !important;
+        border-radius: 4px !important;
+        padding: 8px 12px !important;
+        margin-bottom: 6px !important;
+        box-shadow: none !important;
+    }
+    /* Hover (egér ráhúzás) effektus */
+    div[draggable="true"]:hover {
+        background-color: #31333F !important;
+        border-color: #ff4b4b !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -106,33 +137,24 @@ if check_password():
 
     st.sidebar.write("---")
 
-    # --- 🔀 2. FÜLEK SORRENDJE (NATIV SÖTÉTSZÜRKE MEGOLDÁS) ---
+    # --- 🔀 2. FÜLEK SORRENDJE (SIDEBAR LENT - PONTOSAN A TÖRLES ALATT) ---
     st.sidebar.header("🔀 Fülek sorrendje")
-    st.sidebar.caption("Kattints a kategóriák melletti 'x'-re a kivételhez, vagy válaszd ki őket a kívánt sorrendben:")
+    st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
-    # Biztosítjuk, hogy a session_state szinkronban legyen a listával
-    current_list = st.session_state["current_order"]
+    with st.sidebar:
+        sorted_categories = sort_items(
+            st.session_state["current_order"], 
+            direction="vertical", 
+            key="sidebar_sortable_clean_v3"
+        )
     
-    # Egy natív, gyönyörű sötét multiselect doboz, ami nem tud piros lenni
-    sorted_categories = st.sidebar.multiselect(
-        label="Rendezd a mappákat:",
-        options=detected_categories,
-        default=current_list,
-        label_visibility="collapsed"
-    )
-
-    # Ha a felhasználó teljesen kiürítené, tartsuk meg az alapértelmezettet, hogy ne crasheljen az app
-    if not sorted_categories:
-        sorted_categories = detected_categories
-
-    # Ha változott a sorrend, elmentjük és frissítjük az oldalt
     if sorted_categories != st.session_state["current_order"]:
         st.session_state["current_order"] = sorted_categories
         st.rerun()
 
     categories = st.session_state["current_order"]
 
-    # --- FELTÖLTÉS SECTION ---
+    # --- FELTÖLTÉS SECTION (NAGY FÁJL TÁMOGATÁSSAL) ---
     st.write("---")
     st.subheader("📤 Új fájl feltöltése")
     target_cat = st.selectbox("Hova szeretnéd feltölteni?", categories)
