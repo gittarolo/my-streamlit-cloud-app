@@ -121,14 +121,64 @@ if check_password():
 
     st.write("---")
 
-    # --- LISTÁZÁS ÉS ELŐNÉZET SECTION ---
+    # --- LISTÁZÁS SECTION ---
     st.subheader("📚 Tárolt fájljaid")
     selected_view_cat = st.selectbox("Melyik kategóriát nézed?", categories)
     
-    if "move_sha" not in st.session_state: st.session_state["move_sha"] = None
+    # Session state inicializálások
+    if "move_file_path" not in st.session_state: st.session_state["move_file_path"] = None
+    if "move_file_sha" not in st.session_state: st.session_state["move_file_sha"] = None
+    if "move_file_name" not in st.session_state: st.session_state["move_file_name"] = None
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
+    # --- ✨ ÚJ, KIEMELT ÁTHELYEZÉSI PANEL (A LISTA TETEJÉN JELENIK MEG, HA AKTÍV) ---
+    if st.session_state["move_file_sha"] is not None:
+        with st.container(border=True):
+            st.markdown(f"📂 **Fájl áthelyezése:** `{st.session_state['move_file_name']}`")
+            
+            # Kiszűrjük az aktuális kategóriát a listából
+            available_destinations = [c for c in categories if c != selected_view_cat]
+            
+            # Ez a selectbox most már teljesen tiszta környezetben van, kötelezően meg kell jelennie!
+            dest_cat = st.selectbox("Válassz új célkategóriát:", available_destinations, key="main_move_selectbox")
+            
+            c_move_ok, c_move_cancel = st.columns([1, 1])
+            
+            if c_move_ok.button("✔️ Áthelyezés indítása", type="primary", key="main_move_ok_btn"):
+                with st.spinner("Áthelyezés... Ez nagy fájloknál eltarthat pár másodpercig."):
+                    old_api_url = f"https://api.github.com/repos/{REPO}/contents/{st.session_state['move_file_path']}"
+                    file_res = requests.get(old_api_url, headers=raw_headers)
+                    
+                    if file_res.status_code == 200:
+                        raw_bytes = file_res.content
+                        encoded_content = base64.b64encode(raw_bytes).decode("utf-8")
+                        
+                        new_path = f"{dest_cat}/{st.session_state['move_file_name']}" if dest_cat != "Főkönyvtár" else st.session_state['move_file_name']
+                        create_url = f"https://api.github.com/repos/{REPO}/contents/{new_path}"
+                        
+                        put_res = requests.put(create_url, json={"message": f"Áthelyezve ide: {new_path}", "content": encoded_content}, headers=headers)
+                        
+                        if put_res.status_code in [200, 201]:
+                            requests.delete(old_api_url, json={"message": "Áthelyezés miatt törölve", "sha": st.session_state['move_file_sha']}, headers=headers)
+                            st.session_state["move_file_sha"] = None
+                            st.session_state["move_file_path"] = None
+                            st.session_state["move_file_name"] = None
+                            st.success("Sikeresen áthelyezve!")
+                            st.rerun()
+                        else:
+                            st.error("Nem sikerült másolni az új kategóriába.")
+                    else:
+                        st.error("Hiba történt a fájl olvasásakor.")
+                        
+            if c_move_cancel.button("❌ Mégse", key="main_move_cancel_btn"):
+                st.session_state["move_file_sha"] = None
+                st.session_state["move_file_path"] = None
+                st.session_state["move_file_name"] = None
+                st.rerun()
+        st.write("---")
+
+    # Fájlok szűrése
     filtered_files = []
     for f in all_files:
         path_parts = f["path"].split("/")
@@ -152,8 +202,11 @@ if check_password():
                 st.session_state["preview_sha"] = f["sha"] if st.session_state["preview_sha"] != f["sha"] else None
                 st.rerun()
             
-            if col_move.button("📂", key=f"move_btn_{f['sha']}", help="Áthelyezés"):
-                st.session_state["move_sha"] = f["sha"] if st.session_state["move_sha"] != f["sha"] else None
+            # A gomb most már csak elmenti a fájl adatait a memóriába, és felugrasztja a fenti panelt
+            if col_move.button("📂", key=f"move_{f['sha']}", help="Áthelyezés"):
+                st.session_state["move_file_sha"] = f["sha"]
+                st.session_state["move_file_path"] = f["path"]
+                st.session_state["move_file_name"] = display_name
                 st.rerun()
             
             if col_dl.button("📥", key=f"dl_{f['sha']}", help="Letöltés"):
@@ -164,41 +217,6 @@ if check_password():
             if col_del.button("🗑️", key=f"del_{f['sha']}", help="Törlés"):
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
-
-            # --- 📂 JAVÍTOTT ÁTHELYEZÉSI PANEL ---
-            if st.session_state["move_sha"] == f["sha"]:
-                with st.info(f"Fájl áthelyezése: {display_name}"):
-                    available_destinations = [c for c in categories if c != selected_view_cat]
-                    dest_cat = st.selectbox("Válassz új kategóriát:", available_destinations, key=f"dest_{f['sha']}")
-                    
-                    c_move_ok, c_move_cancel = st.columns([1, 1])
-                    
-                    if c_move_ok.button("✔️ Áthelyezés", key=f"move_ok_{f['sha']}", type="primary"):
-                        with st.spinner("Áthelyezés... (Nagyobb fájloknál ez pár másodpercig tarthat)"):
-                            # A RAW fejléccel kérjük le, így átviszi az 1 MB feletti fájlokat is akadály nélkül!
-                            file_res = requests.get(file_api_url, headers=raw_headers)
-                            if file_res.status_code == 200:
-                                raw_bytes = file_res.content
-                                encoded_content = base64.b64encode(raw_bytes).decode("utf-8")
-                                
-                                new_path = f"{dest_cat}/{display_name}" if dest_cat != "Főkönyvtár" else display_name
-                                create_url = f"https://api.github.com/repos/{REPO}/contents/{new_path}"
-                                
-                                put_res = requests.put(create_url, json={"message": f"Áthelyezve ide: {new_path}", "content": encoded_content}, headers=headers)
-                                
-                                if put_res.status_code in [200, 201]:
-                                    requests.delete(file_api_url, json={"message": "Áthelyezés miatt törölve", "sha": f["sha"]}, headers=headers)
-                                    st.session_state["move_sha"] = None
-                                    st.success("Sikeresen áthelyezve!")
-                                    st.rerun()
-                                else:
-                                    st.error("Nem sikerült létrehozni az új kategóriában.")
-                            else:
-                                st.error("Hiba történt a fájl beolvasásakor.")
-                                
-                    if c_move_cancel.button("❌ Mégse", key=f"move_cancel_{f['sha']}"):
-                        st.session_state["move_sha"] = None
-                        st.rerun()
 
             # --- 👁️ AKTÍV ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
