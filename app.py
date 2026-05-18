@@ -207,29 +207,36 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET (ÚJ KÖZVETLEN GITHUB LINK LOGIKÁVAL) ---
+            # --- 👁️ AKTÍV ELŐNÉZET (HILÁTLAN, HIVATALOS GITHUB API LETÖLTŐ LINKKEL) ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
                     if filename_lower.endswith('.pdf'):
-                        # Generálunk egy közvetlen Raw linket a GitHub-hoz, amibe biztonságosan beágyazzuk a tokent
-                        # Így a böngésző nem a Streamlit memóriájából, hanem egyenesen a GitHub villámgyors CDN szerveréről olvassa a fájlt!
-                        direct_raw_url = f"https://raw.githubusercontent.com/{REPO}/main/{f['path']}?token={TOKEN}"
-                        
-                        st.success("🎯 Közvetlen megtekintő link generálva!")
-                        st.markdown(
-                            f'<a href="{direct_raw_url}" target="_blank" style="text-decoration: none;">'
-                            f'<div style="padding: 12px; background-color: #FF4B4B; color: white; '
-                            f'text-align: center; border-radius: 6px; font-weight: bold; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
-                            f'📖 PDF megnyitása azonnal (új lapon)'
-                            f'</div></a>', 
-                            unsafe_allow_html=True
-                        )
-                        st.caption("A gombra kattintva a PDF egy új, tiszta lapon fog megnyílni, villámgyors betöltéssel.")
+                        with st.spinner("Biztonságos megtekintő link lekérése..."):
+                            # Lekérjük a fájl metaadatait az API-tól
+                            meta_res = requests.get(file_api_url, headers=headers)
+                            
+                            if meta_res.status_code == 200:
+                                # Ez a gomb most már a hivatalos GitHub download_url-t kapja meg
+                                # ami tartalmazza a hitelesítést és nem téved el ékezetek/szóközök miatt sem!
+                                download_url = meta_res.json().get("download_url")
+                                
+                                st.success("🎯 Biztonságos kapcsolat felépítve!")
+                                st.markdown(
+                                    f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
+                                    f'<div style="padding: 12px; background-color: #FF4B4B; color: white; '
+                                    f'text-align: center; border-radius: 6px; font-weight: bold; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
+                                    f'📖 PDF megnyitása azonnal (új lapon)'
+                                    f'</div></a>', 
+                                    unsafe_allow_html=True
+                                )
+                                st.caption("Kattints a fenti piros gombra. A PDF azonnal, hibák nélkül be fog tölteni a böngésződben.")
+                            else:
+                                st.error("Nem sikerült elérni a fájlt a GitHubon.")
                         
                     else:
-                        # Képek, videók, hangfájlok maradhatnak az eredeti letöltős mederben, mert azok kisebbek
+                        # Képek, videók maradtak a régiek
                         with st.spinner("Betöltés..."):
                             file_res = requests.get(file_api_url, headers=raw_headers)
                             if file_res.status_code == 200:
