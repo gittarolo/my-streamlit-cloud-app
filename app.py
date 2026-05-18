@@ -125,40 +125,32 @@ if check_password():
     st.subheader("📚 Tárolt fájljaid")
     selected_view_cat = st.selectbox("Melyik kategóriát nézed?", categories)
     
-    # Session state inicializálások
     if "move_file_path" not in st.session_state: st.session_state["move_file_path"] = None
     if "move_file_sha" not in st.session_state: st.session_state["move_file_sha"] = None
     if "move_file_name" not in st.session_state: st.session_state["move_file_name"] = None
     if "preview_sha" not in st.session_state: st.session_state["preview_sha"] = None
     if "delete_confirm_sha" not in st.session_state: st.session_state["delete_confirm_sha"] = None
 
-    # --- ✨ ÚJ, KIEMELT ÁTHELYEZÉSI PANEL (A LISTA TETEJÉN JELENIK MEG, HA AKTÍV) ---
+    # ÚJ ÁTHELYEZÉSI PANEL
     if st.session_state["move_file_sha"] is not None:
         with st.container(border=True):
             st.markdown(f"📂 **Fájl áthelyezése:** `{st.session_state['move_file_name']}`")
-            
-            # Kiszűrjük az aktuális kategóriát a listából
             available_destinations = [c for c in categories if c != selected_view_cat]
-            
-            # Ez a selectbox most már teljesen tiszta környezetben van, kötelezően meg kell jelennie!
             dest_cat = st.selectbox("Válassz új célkategóriát:", available_destinations, key="main_move_selectbox")
             
             c_move_ok, c_move_cancel = st.columns([1, 1])
-            
             if c_move_ok.button("✔️ Áthelyezés indítása", type="primary", key="main_move_ok_btn"):
-                with st.spinner("Áthelyezés... Ez nagy fájloknál eltarthat pár másodpercig."):
+                with st.spinner("Áthelyezés..."):
                     old_api_url = f"https://api.github.com/repos/{REPO}/contents/{st.session_state['move_file_path']}"
                     file_res = requests.get(old_api_url, headers=raw_headers)
                     
                     if file_res.status_code == 200:
                         raw_bytes = file_res.content
                         encoded_content = base64.b64encode(raw_bytes).decode("utf-8")
-                        
                         new_path = f"{dest_cat}/{st.session_state['move_file_name']}" if dest_cat != "Főkönyvtár" else st.session_state['move_file_name']
                         create_url = f"https://api.github.com/repos/{REPO}/contents/{new_path}"
                         
                         put_res = requests.put(create_url, json={"message": f"Áthelyezve ide: {new_path}", "content": encoded_content}, headers=headers)
-                        
                         if put_res.status_code in [200, 201]:
                             requests.delete(old_api_url, json={"message": "Áthelyezés miatt törölve", "sha": st.session_state['move_file_sha']}, headers=headers)
                             st.session_state["move_file_sha"] = None
@@ -178,7 +170,6 @@ if check_password():
                 st.rerun()
         st.write("---")
 
-    # Fájlok szűrése
     filtered_files = []
     for f in all_files:
         path_parts = f["path"].split("/")
@@ -192,7 +183,6 @@ if check_password():
     else:
         for f in filtered_files:
             display_name = f["path"].split("/")[-1]
-            
             col_name, col_prev, col_move, col_dl, col_del = st.columns([2, 1, 1, 1, 1])
             col_name.write(f"📄 {display_name}")
             
@@ -202,7 +192,6 @@ if check_password():
                 st.session_state["preview_sha"] = f["sha"] if st.session_state["preview_sha"] != f["sha"] else None
                 st.rerun()
             
-            # A gomb most már csak elmenti a fájl adatait a memóriába, és felugrasztja a fenti panelt
             if col_move.button("📂", key=f"move_{f['sha']}", help="Áthelyezés"):
                 st.session_state["move_file_sha"] = f["sha"]
                 st.session_state["move_file_path"] = f["path"]
@@ -218,7 +207,7 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET ---
+            # --- 👁️ AKTÍV ELŐNÉZET (MÓDOSÍTVA PDF JAVÍTÁSSAL) ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     with st.spinner("Betöltés..."):
@@ -233,14 +222,30 @@ if check_password():
                                 st.video(raw_bytes)
                             elif filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
                                 st.audio(raw_bytes)
+                            
+                            # --- 🛠️ JAVÍTOTT PDF-MEGJELENÍTÉS BÖNGÉSZŐ-BLOKKOLÁS ELLEN ---
                             elif filename_lower.endswith('.pdf'):
                                 base64_pdf = base64.b64encode(raw_bytes).decode('utf-8')
-                                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+                                pdf_url = f"data:application/pdf;base64,{base64_pdf}"
+                                
+                                st.info("ℹ️ A böngészők biztonsági szabályai miatt a nagy méretű PDF-eket beágyazva blokkolhatják.")
+                                
+                                # Adunk egy elegáns gombot, ami egy tiszta, új lapon nyitja meg a PDF-et a böngésző saját olvasójában
+                                st.markdown(
+                                    f'<a href="{pdf_url}" target="_blank" style="text-decoration: none;">'
+                                    f'<div style="padding: 10px; background-color: #FF4B4B; color: white; '
+                                    f'text-align: center; border-radius: 5px; font-weight: bold; margin-bottom: 15px;">'
+                                    f'📖 PDF megnyitása teljes képernyőn (új lapon)'
+                                    f'</div></a>', 
+                                    unsafe_allow_html=True
+                                )
+                                
+                                # Biztonsági tartalékként azért megpróbáljuk renderelni hátha kisebb fájloknál működik
+                                pdf_display = f'<iframe src="{pdf_url}" width="100%" height="500" type="application/pdf"></iframe>'
                                 st.markdown(pdf_display, unsafe_allow_html=True)
                             else:
                                 st.warning("Ehhez a fájltípushoz nem elérhető online előnézet.")
 
-            # --- 🗑️ AKTÍV TÖRLES MEGERŐSÍTÉSE ---
             if st.session_state["delete_confirm_sha"] == f["sha"]:
                 st.warning(f"⚠️ Biztosan törlöd: '{display_name}'?")
                 c_yes, c_no = st.columns([1, 1])
