@@ -208,30 +208,32 @@ if check_password():
                 st.session_state["delete_confirm_sha"] = f["sha"]
                 st.rerun()
 
-            # --- 👁️ AKTÍV ELŐNÉZET (VÉGLEGES, SZIGORÚ CSP BIZTOS JAVÍTÁSSAL) ---
+            # --- 👁️ AKTÍV ELŐNÉZET ---
             if st.session_state["preview_sha"] == f["sha"]:
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    # Ha PDF, akkor egy hivatalos külső renderelőt használunk, ami be tud tölteni privát streamet is
-                    if filename_lower.endswith('.pdf'):
-                        with st.spinner("PDF előkészítése..."):
+                    # Definiáljuk a támogatott irodai kiterjesztéseket
+                    office_extensions = ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt')
+                    
+                    # --- DOKUMENTUMOK (PDF + WORD + EXCEL + PPT) ONLINE MEGJELENÍTÉSE ---
+                    if filename_lower.endswith(office_extensions):
+                        with st.spinner("Dokumentum előkészítése az olvasóhoz..."):
                             meta_res = requests.get(file_api_url, headers=headers)
                             if meta_res.status_code == 200:
                                 download_url = meta_res.json().get("download_url")
                                 
-                                # A trükk: a Google hivatalos beágyazott dokumentum-megtekintőjét használjuk,
-                                # ami teljesen immunis a Streamlit szerver szigorú CSP letiltásaira!
+                                # Google Docs Viewer beágyazás szóköz-biztos kódolással
                                 encoded_url = urllib.parse.quote(download_url)
                                 google_viewer_url = f"https://docs.google.com/gview?url={encoded_url}&embedded=true"
                                 
                                 iframe_code = f'<iframe src="{google_viewer_url}" width="100%" height="700px" frameborder="0"></iframe>'
                                 st.markdown(iframe_code, unsafe_allow_html=True)
                             else:
-                                st.error("Nem sikerült lekérni a PDF adatait.")
+                                st.error("Nem sikerült lekérni a fájl adatait a GitHubról.")
                                 
                     else:
-                        # Képek, hangok, videók betöltése helyben
+                        # Képek, hangok, videók betöltése változatlanul helyben
                         with st.spinner("Betöltés..."):
                             file_res = requests.get(file_api_url, headers=raw_headers)
                             if file_res.status_code == 200:
