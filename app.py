@@ -9,36 +9,24 @@ from streamlit_sortables import sort_items
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
-# --- 🎨 A PIROS KÁRTYÁK ÁTSZÍNEZÉSE SÖTÉTSZÜRKÉRE ---
-# Ez a CSS kód közvetlenül a HTML struktúrában keresi meg a rendező elemeit,
-# és teljesen felülírja a piros hátteret az app sötét stílusára.
+# --- 🎨 GLOBÁLIS CSS A KÁRTYÁK BELSŐ ELEMEIHEZ ÉS SZEGÉLYEIHEZ ---
 st.markdown(
     """
     <style>
-    /* 1. Az összes drag-and-drop elem alap stílusa (Hátterek sötétszürkére állítása) */
-    div[draggable="true"], 
-    .sortable-item, 
-    [class*="sortable"] > div > div {
+    /* Elfedjük a külső komponens által generált esetleges extra piros részleteket és a belső szövegdobozokat */
+    [data-testid="stSidebar"] div[draggable="true"] {
         background-color: #262730 !important;
-        background: #262730 !important;
-        color: #ffffff !important;
         border: 1px solid #464855 !important;
         border-radius: 6px !important;
-        box-shadow: none !important;
     }
-    
-    /* 2. Biztosítjuk, hogy a szövegek színe fehér maradjon a sötét háttéren */
-    div[draggable="true"] *, 
-    .sortable-item * {
+    /* Biztosítjuk, hogy a szöveg fehér legyen és ne örököljön piros árnyékot */
+    [data-testid="stSidebar"] div[draggable="true"] * {
         color: #ffffff !important;
+        text-shadow: none !important;
     }
-
-    /* 3. Egér ráhúzáskor (hover) egy picit világosabb szürkét kapjon */
-    div[draggable="true"]:hover, 
-    .sortable-item:hover {
-        background-color: #31333F !important;
-        background: #31333F !important;
-        border-color: #555867 !important;
+    /* Kártyák közötti távolság finomítása */
+    .sortable-container > div {
+        margin-bottom: 8px !important;
     }
     </style>
     """,
@@ -147,11 +135,25 @@ if check_password():
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Húzd a mappákat a kívánt sorrendbe:")
 
+    # Ide ágyazzuk be a komponenst testreszabott beépített stílus szótárral (dict),
+    # ami közvetlenül felülírja a beégetett piros beállításokat.
+    custom_item_styles = {
+        "background-color": "#262730",
+        "background": "#262730",
+        "color": "#ffffff",
+        "border": "1px solid #464855",
+        "border-radius": "6px",
+        "padding": "10px",
+        "margin-bottom": "6px",
+        "box-shadow": "none"
+    }
+
     with st.sidebar:
         sorted_categories = sort_items(
             st.session_state["current_order"], 
             direction="vertical", 
-            key="sidebar_sortable_v5"
+            key="sidebar_sortable_final_v1",
+            item_styles=custom_item_styles  # Ez a paraméter közvetlenül az elem szintjén írja felül a piros színt!
         )
     
     if sorted_categories != st.session_state["current_order"]:
