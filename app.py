@@ -228,7 +228,7 @@ if check_password():
                 with st.expander("✨ Előnézet bezárása", expanded=True):
                     filename_lower = display_name.lower()
                     
-                    # 1. INTERAKTÍV TÁBLÁZATOK HELYBEN (CSV, EXCEL)
+                    # 1. INTERAKTÍV TÁBLÁZATOK HELYBEN (CSV, EXCEL, RÉGI EXCEL)
                     if filename_lower.endswith(('.xlsx', '.xls', '.csv')):
                         with st.spinner("Táblázat beolvasása..."):
                             file_res = requests.get(file_api_url, headers=raw_headers)
@@ -236,12 +236,17 @@ if check_password():
                                 try:
                                     if filename_lower.endswith('.csv'):
                                         df = pd.read_csv(io.BytesIO(file_res.content))
+                                    elif filename_lower.endswith('.xls'):
+                                        # Régi Excel formátum kezelése xlrd motorral
+                                        df = pd.read_excel(io.BytesIO(file_res.content), engine='xlrd')
                                     else:
+                                        # Új Excel formátum (.xlsx)
                                         df = pd.read_excel(io.BytesIO(file_res.content))
+                                        
                                     st.success(f"📊 {df.shape[0]} sor, {df.shape[1]} oszlop betöltve.")
                                     st.dataframe(df, use_container_width=True)
                                 except Exception as e:
-                                    st.error("Nem sikerült beolvasni a táblázatot.")
+                                    st.error("Nem sikerült beolvasni a táblázatot. Ha régi .xls fájlról van szó, ellenőrizd, hogy az xlrd szerepel-e a requirements.txt-ben!")
                             else:
                                 st.error("Hiba a fájl letöltésekor.")
 
