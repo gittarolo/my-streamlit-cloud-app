@@ -4,6 +4,7 @@ import base64
 import urllib.parse
 import pandas as pd
 import io
+from streamlit_sortables import sort_items  # Új drag-and-drop komponens importálása
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
@@ -36,18 +37,38 @@ if check_password():
     with st.spinner("Tárhely beolvasása..."):
         res = requests.get(f"https://api.github.com/repos/{REPO}/git/trees/main?recursive=1", headers=headers)
     
-    categories = ["Főkönyvtár"]
+    detected_categories = ["Főkönyvtár"]
     all_files = []
     
     if res.status_code == 200:
         tree = res.json().get("tree", [])
         for item in tree:
             if item["type"] == "tree":
-                categories.append(item["path"])
+                detected_categories.append(item["path"])
             elif item["type"] == "blob":
                 all_files.append(item)
     
-    categories = sorted(list(set(categories)))
+    detected_categories = sorted(list(set(detected_categories)))
+
+    # --- 🎛️ DRAG-AND-DROP SORRENDEZÉS PANEL (SIDEBAR) ---
+    st.sidebar.header("🔀 Fülek sorrendje")
+    st.sidebar.caption("Fogd meg az egérrel a mappákat és húzd őket a kívánt sorrendbe:")
+    
+    # Session state-ben eltároljuk az aktuális sorrendet, hogy ne ugorjon vissza alaphelyzetbe gombnyomáskor
+    if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
+        st.session_state["current_order"] = detected_categories
+
+    # Megjelenítjük az interaktív drag-and-drop listát az oldalsávban
+    sorted_categories = sort_items(st.session_state["current_order"], direction="vertical", key="category_sortable_panel")
+    
+    # Frissítjük a sorrendet a választás alapján
+    if sorted_categories != st.session_state["current_order"]:
+        st.session_state["current_order"] = sorted_categories
+        st.rerun()
+
+    categories = st.session_state["current_order"]
+
+    st.sidebar.write("---")
 
     # --- KATEGÓRIA KEZELÉS SECTION (SIDEBAR) ---
     st.sidebar.header("🛠️ Kategóriák kezelése")
@@ -59,6 +80,9 @@ if check_password():
                 url = f"https://api.github.com/repos/{REPO}/contents/{clean_cat}/.gitkeep"
                 cat_res = requests.put(url, json={"message": f"Kategória létrekozva: {clean_cat}", "content": "XA=="}, headers=headers)
                 if cat_res.status_code in [200, 201]:
+                    # Ha új kategória jön létre, töröljük a cache-elt sorrendet, hogy az új mappa is bekerülhessen a listába
+                    if "current_order" in st.session_state:
+                        del st.session_state["current_order"]
                     st.sidebar.success(f"'{clean_cat}' létrekozva!")
                     st.rerun()
                 else:
@@ -90,6 +114,9 @@ if check_password():
                     requests.delete(del_url, json={"message": "Kategória törlés miatt eltávolítva", "sha": f["sha"]}, headers=headers)
                 requests.delete(f"https://api.github.com/repos/{REPO}/contents/{cat_to_delete}/.gitkeep", json={"message": "Mappa véglegen törölve"}, headers=headers)
                 st.session_state["cat_delete_confirm"] = False
+                # Törlés után szintén frissíteni kell a listát a session-ben
+                if "current_order" in st.session_state:
+                    del st.session_state["current_order"]
                 st.sidebar.success(f"'{cat_to_delete}' sikeresen törölve!")
                 st.rerun()
         if c_no.button("❌ Mégse", key="cat_del_no"):
@@ -153,7 +180,7 @@ if check_password():
         selected_view_cat = categories[i]
         
         with tab:
-            # ÁTHELYEZÉSI PANEL (Csak az aktív fülön jelenik meg, ha ott indították el)
+            # ÁTHELYEZÉSI PANEL
             if st.session_state["move_file_sha"] is not None and st.session_state["move_file_path"].startswith(selected_view_cat if selected_view_cat != "Főkönyvtár" else ""):
                 with st.container(border=True):
                     st.markdown(f"📂 **Fájl áthelyezése:** `{st.session_state['move_file_name']}`")
