@@ -32,7 +32,7 @@ if check_password():
     # --- FÁJLOK ÉS KATEGÓRIÁK LEKÉRÉSE ---
     with st.spinner("Tárhely beolvasása..."):
         # Lekérjük a teljes repó tartalmát (rekurzívan, hogy a mappák mélyére lássunk)
-        res = requests.get(f"https://api.github.com/repos/{REPO}/git/trees/master?recursive=1", headers=headers)
+        res = requests.get(f"https://api.github.com/repos/{REPO}/git/trees/main?recursive=1", headers=headers)
     
     categories = ["Főkönyvtár"] # Alapértelmezett kategória
     all_files = []
