@@ -9,6 +9,38 @@ from streamlit_sortables import sort_items  # Új drag-and-drop komponens import
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
 st.set_page_config(page_title="Saját Privát Tárhely", page_icon="🔒", layout="wide")
 
+# --- 🎨 EGYEDI JAVÍTÁS A RENDEZŐ KÁRTYÁKHOZ ---
+# Ez a kis CSS kód kényszeríti a sortables kártyákat, hogy beilleszkedjenek a Sidebar méretébe,
+# és a csúnya piros helyett elegáns, a környezetbe olvadó sötét szürke hátteret kapjanak.
+st.markdown(
+    """
+    <style>
+    /* A sortables konténer szélességének korlátozása a Sidebarhoz */
+    [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] + div {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    /* A kártyák egyedi formázása: sötét háttér, fehér szöveg, finom keret */
+    .st-key-sidebar_sortable_panel_unique div div div[draggable="true"] {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid #464855 !important;
+        border-radius: 4px !important;
+        padding: 8px 12px !important;
+        margin-bottom: 6px !important;
+        box-shadow: none !important;
+        font-size: 14px !important;
+    }
+    /* Egér ráhúzáskor (hover) egy picit világosabb legyen */
+    .st-key-sidebar_sortable_panel_unique div div div[draggable="true"]:hover {
+        background-color: #31333F !important;
+        border-color: #ff4b4b !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -50,7 +82,7 @@ if check_password():
     
     detected_categories = sorted(list(set(detected_categories)))
 
-    # --- 🎛️ DRAG-AND-DROP SORRENDEZÉS PANEL (SIDEBAR) ---
+    # --- 🎛️ DRAG-AND-DROP SORRENDEZÉS PANEL (KIFEJEZETTEN A SIDEBARBAN) ---
     st.sidebar.header("🔀 Fülek sorrendje")
     st.sidebar.caption("Fogd meg az egérrel a mappákat és húzd őket a kívánt sorrendbe:")
     
@@ -58,12 +90,14 @@ if check_password():
     if "current_order" not in st.session_state or set(st.session_state["current_order"]) != set(detected_categories):
         st.session_state["current_order"] = detected_categories
 
-    # Megjelenítjük az interaktív drag-and-drop listát az oldalsávban (az alapértelmezetten beépített sötét/világos témához igazítva)
-    sorted_categories = sort_items(
-        st.session_state["current_order"], 
-        direction="vertical", 
-        key="category_sortable_sidebar"
-    )
+    # ITT TÖRTÉNT A VÁLTOZÁS: st.sidebar.-al kényszerítjük be a bal oldali sávba, 
+    # és kapott egy teljesen új, egyedi key azonosítót, hogy a gyorsítótár ürüljön.
+    with st.sidebar:
+        sorted_categories = sort_items(
+            st.session_state["current_order"], 
+            direction="vertical", 
+            key="sidebar_sortable_panel_unique"
+        )
     
     # Frissítjük a sorrendet a választás alapján
     if sorted_categories != st.session_state["current_order"]:
@@ -141,7 +175,6 @@ if check_password():
             st.error("⚠️ Ingyenes verzióban a maximális fájlméret 100 MB.")
         else:
             if st.button("🚀 Biztonságos feltöltés indítása"):
-                # ITT JAVÍTVA A NAGYBETŰS St.spinner -> st.spinner hiba!
                 with st.spinner("Fájl beolvasása és biztonságos feldolgozása..."):
                     final_path = f"{target_cat}/{file_name}" if target_cat != "Főkönyvtár" else file_name
                     encoded_content = base64.b64encode(file_bytes).decode("utf-8")
