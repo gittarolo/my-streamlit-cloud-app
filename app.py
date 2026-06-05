@@ -7,7 +7,7 @@ import io
 from streamlit_sortables import sort_items  # Drag-and-drop komponens
 
 # Oldal alapbeállításai - wide módra állítva a fülek szebb elrendezéséért
-st.set_page_config(page_title="Patrikkkkkkkkkkkkkkk", page_icon="🔒", layout="wide")
+st.set_page_config(page_title="Saját Felhő Tárhelyem", page_icon="🔒", layout="wide")
 
 # --- 🎨 ATOMBIZTOS DESIGN JAVÍTÁS (KÁRTYÁK SZÍNE ÉS MÉRETE) ---
 st.markdown(
